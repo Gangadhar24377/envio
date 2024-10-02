@@ -1,9 +1,11 @@
 #!/bin/bash
-echo 'Setting up environment: shuttler'
+LOG_FILE="/home/kambhamettu.s/Projects/envio/aI-package-manager/testing_env/log.txt"
+exec > >(tee -a $LOG_FILE) 2>&1
+echo 'Setting up environment: log'
 cd /home/kambhamettu.s/Projects/envio/aI-package-manager/testing_env
 
 # Create the virtual environment
-VENV_NAME="shuttler"
+VENV_NAME="log"
 echo "Creating environment '${VENV_NAME}'..."
 
 if [ "pip" == "conda" ]; then
@@ -34,10 +36,9 @@ fi
 
 # Install required packages
 echo "Installing required packages..."
-pip install scipy==1.14.1
-pip install librosa==0.10.2.post1
+pip install numpy==2.1.1
+pip install matplotlib==3.9.2
 pip install seaborn==0.13.2
-pip install wave==0.0.2
 
 # Deactivate the environment
 echo "Deactivating environment..."

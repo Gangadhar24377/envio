@@ -27,6 +27,8 @@ def create_bash_script(commands, env_path, env_name, use_conda=False):
     
     # Build the content for the bash script
     script_content = """#!/bin/bash
+LOG_FILE="{env_path}/log.txt"
+exec > >(tee -a $LOG_FILE) 2>&1
 echo 'Setting up environment: {env_name}'
 cd {env_path}
 
