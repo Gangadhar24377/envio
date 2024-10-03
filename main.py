@@ -4,6 +4,7 @@ import sys
 from prompt_toolkit import prompt
 import litellm
 import json
+from datetime import datetime
 from crewai import Crew, Task
 from agents.nlp_agent import NLPAgent
 from agents.dependency_resolution_agent import DependencyResolutionAgent
@@ -20,22 +21,24 @@ os.environ['LITELLM_LOG'] = 'DEBUG'
 os.environ['CREWAI_DISABLE_TELEMETRY'] = 'true'
 
 def create_bash_script(commands, env_path, env_name, use_conda=False):
-    script_path = os.path.join(env_path, "setup_env.sh")  # Save in the provided environment path
-    
-    # Determine whether to use conda or pip
+    script_path = os.path.join(env_path, "setup_env.sh")
     package_manager = "conda" if use_conda else "pip"
-    
-    # Build the content for the bash script
+
     script_content = """#!/bin/bash
-LOG_FILE="{env_path}/log.txt"
-exec > >(tee -a $LOG_FILE) 2>&1
+
+# Generate a timestamp for the log file
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOG_FILE="{env_path}/log_${{TIMESTAMP}}.txt"
+
+# Redirect stdout and stderr to both console and log file
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 echo 'Setting up environment: {env_name}'
 cd {env_path}
 
 # Create the virtual environment
 VENV_NAME="{env_name}"
 echo "Creating environment '${{VENV_NAME}}'..."
-
 if [ "{package_manager}" == "conda" ]; then
     conda create -y -n $VENV_NAME python=3.9
 else
@@ -85,14 +88,22 @@ else
     echo "source {env_path}/$VENV_NAME/bin/activate"
 fi
 
+echo "Log file created at: $LOG_FILE"
+
 read -p 'Press any key to close this terminal...'
-""".format(env_name=env_name, env_path=env_path, package_manager=package_manager, commands="\n".join(commands))
-    
+""".format(
+        env_name=env_name,
+        env_path=env_path,
+        package_manager=package_manager,
+        commands="\n".join(commands)
+    )
+
     with open(script_path, "w") as f:
         f.write(script_content)
-    
+
     # Make the script executable
     os.chmod(script_path, 0o755)
+
     return script_path
 
 def execute_setup_commands(commands, env_path, env_name, use_conda=False):
@@ -101,8 +112,11 @@ def execute_setup_commands(commands, env_path, env_name, use_conda=False):
         script_path = create_bash_script(commands, env_path, env_name, use_conda)
         
         # Check if a tmux session with the given name already exists
-        existing_sessions = subprocess.check_output(["tmux", "list-sessions"], stderr=subprocess.STDOUT).decode()
-        
+        try:
+            existing_sessions = subprocess.check_output(["tmux", "list-sessions"], stderr=subprocess.STDOUT).decode()
+        except subprocess.CalledProcessError:
+            existing_sessions = ""  # No sessions exist, so this can be an empty string
+
         if env_name in existing_sessions:
             print(f"Session '{env_name}' already exists. Attaching to the existing session...")
             subprocess.run(f"tmux attach -t {env_name}", shell=True)
