@@ -1,7 +1,6 @@
-# agents/nlp_agent.py
-from crewai import Agent
-from langchain_openai import ChatOpenAI
+from crewai import Agent, LLM
 import os
+
 
 class NLPAgent(Agent):
     def __init__(self):
@@ -11,7 +10,7 @@ class NLPAgent(Agent):
             goal="Extract package information and environment type from user input",
             backstory="I am an AI specialized in understanding and processing natural language inputs related to package management.",
             verbose=True,
-            llm=ChatOpenAI(model_name="gpt-4o-mini", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
+            llm=LLM(model="ollama/deepseek-coder-v2:latest", base_url="http://localhost:11434")  # Indicating usage of Ollama for local LLM
         )
 
     def extract_package_info(self, user_input):

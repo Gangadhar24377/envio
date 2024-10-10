@@ -1,0 +1,9 @@
+# Ignore environment files
+.env
+
+# Ignore compiled Python bytecode (.pyc) files
+**/__pycache__/
+**/*.pyc
+
+# Ignore shell scripts
+setup_env.sh
