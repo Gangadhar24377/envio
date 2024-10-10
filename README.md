@@ -1,3 +1,8 @@
+TODO: 
+1. agent should understand that we want conda env
+2. maybe changes in nlpagent, need to look up
+3. when the conda tmux session is running logs need to be saved similar to pip, but at user specified path.
+
 ## Run the requirements.txt file to install the packages needed and then run main.py
 
 
