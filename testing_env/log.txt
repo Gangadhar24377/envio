@@ -1,0 +1,20 @@
+Setting up environment: test4
+Creating environment 'test4'...
+Activating environment...
+Upgrading pip...
+Requirement already satisfied: pip in ./test4/lib/python3.10/site-packages (23.0.1)
+Collecting pip
+  Using cached pip-24.2-py3-none-any.whl (1.8 MB)
+Installing collected packages: pip
+  Attempting uninstall: pip
+    Found existing installation: pip 23.0.1
+    Uninstalling pip-23.0.1:
+      Successfully uninstalled pip-23.0.1
+Successfully installed pip-24.2
+Installing required packages...
+/Users/saieeshwar/College/capstone/envio/testing_env/setup_env.sh: line 34: [pip install numpy==2.1.2,: command not found
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+source /Users/saieeshwar/College/capstone/envio/testing_env/test4/bin/activate
+Press any key to close this terminal...

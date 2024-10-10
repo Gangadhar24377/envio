@@ -21,9 +21,8 @@ os.environ['CREWAI_DISABLE_TELEMETRY'] = 'true'
 
 def create_bash_script(commands, env_path, env_name, use_conda=False):
     script_path = os.path.join(env_path, "setup_env.sh") if not use_conda else "setup_env.sh"
-    
     package_manager = "conda" if use_conda else "pip"
-    
+
     script_content = f"""#!/bin/bash
 LOG_FILE="{os.path.join(env_path, 'log.txt') if not use_conda else 'log.txt'}"
 exec > >(tee -a $LOG_FILE) 2>&1
@@ -79,7 +78,7 @@ fi
 
 read -p 'Press any key to close this terminal...'
 """
-    
+
     with open(script_path, "w") as f:
         f.write(script_content)
     
@@ -129,77 +128,71 @@ def main():
         )
         print(f"User Input:\n{user_input}\n")
 
-        task1 = Task(
-            description=f"Extract package information from the following user input:\n{user_input}",
+        # # Determine environment type
+        task_resolve_env_type = Task(
+            description=f"Determine the environment type (pip/conda) based on matching with keywords such as conda,anaconda are for conda"
+            "and pip, python and venv are for pip, based on: {user_input}",
             agent=nlp_agent,
-            expected_output="A structured list of package names, versions, environment type, and environment information extracted from the user input"
+            expected_output="A JSON string containing the environment type (either 'pip' or 'conda')"
         )
+        env_type = nlp_agent.execute_task(task_resolve_env_type).lower()
+        
+        if not env_type or env_type not in ['pip', 'conda']:
+            env_type = input("Could not determine environment type. Please specify (pip/conda): ").lower()
+            while env_type not in ['pip', 'conda']:
+                env_type = input("Invalid input. Please enter either 'pip' or 'conda': ").lower()
+        
+        print(f"Using environment type: {env_type}")
 
+        # Extract package information
+        task1 = Task(
+            description=f"Extract package information from the following user input: {user_input}, and take the environment type from {env_type}",
+            agent=nlp_agent,
+            expected_output="A structured list of package names, versions, environment type, and environment information extracted from the user input."
+        )
         extracted_info = nlp_agent.execute_task(task1)
         print("Extracted info:", extracted_info)
 
-        try:
-            extracted_data = json.loads(extracted_info)
-            env_type = extracted_data.get('environment_type', '').lower()
-            if not env_type or env_type not in ['pip', 'conda']:
-                env_type = prompt("Please specify the environment type (pip/conda): ").lower()
-                while env_type not in ['pip', 'conda']:
-                    env_type = prompt("Invalid input. Please enter either 'pip' or 'conda': ").lower()
-            print(f"Using environment type: {env_type}")
-        except json.JSONDecodeError:
-            env_type = prompt("Could not determine environment type. Please specify (pip/conda): ").lower()
-            while env_type not in ['pip', 'conda']:
-                env_type = prompt("Invalid input. Please enter either 'pip' or 'conda': ").lower()
-
+        # Resolve package dependencies
         task2 = Task(
-            description=f"Resolve package dependencies based on the extracted information:\n{extracted_info}",
+            description=f"Resolve package dependencies based on the extracted information: {extracted_info}",
             agent=dependency_agent,
             expected_output="A list of resolved package dependencies with their versions"
         )
-
         resolved_dependencies = dependency_agent.execute_task(task2)
         print("Resolved dependencies:", resolved_dependencies)
 
+        # Generate setup commands
         task3 = Task(
-            description=f"Generate environment setup commands for a {env_type} environment based on the resolved dependencies:\n{resolved_dependencies}",
+            description=f"Generate environment setup commands for a {env_type} environment based on the resolved dependencies: {resolved_dependencies}",
             agent=command_agent,
             expected_output=f'A JSON string containing only "commands" (list of command-line instructions) and "environment_type" (which must be {env_type})'
         )
-
         command_output = command_agent.execute_task(task3)
         print("Command output:", command_output)
 
-        try:
-            cleaned_output = command_output.strip('`')
-            output = json.loads(cleaned_output)
-            
-            commands = output.get('commands')
-            output_env_type = output.get('environment_type', '').lower()
-            
-            if not commands:
-                raise ValueError("Missing 'commands' in the output")
-            if output_env_type != env_type:
-                raise ValueError(f"Environment type mismatch. Expected {env_type}, got {output_env_type}")
-            
-            print(f"Environment type: {env_type}")
-            print("Commands:")
-            for cmd in commands:
-                print(f"  {cmd}")
-        except json.JSONDecodeError as e:
-            print(f"Error processing the output: {e}")
-            print(f"Raw output: {command_output}")
-            sys.exit(1)
-        except ValueError as e:
-            print(f"Error in command output: {e}")
-            print(f"Raw output: {command_output}")
-            sys.exit(1)
+        cleaned_output = command_output.strip('`')
+        output = json.loads(cleaned_output)
+        
+        commands = output.get('commands')
+        output_env_type = output.get('environment_type', '').lower()
+        
+        if not commands:
+            raise ValueError("Missing 'commands' in the output")
+        if output_env_type != env_type:
+            raise ValueError(f"Environment type mismatch. Expected {env_type}, got {output_env_type}")
+        
+        print(f"Environment type: {env_type}")
+        print("Commands:")
+        for cmd in commands:
+            print(f"  {cmd}")
 
+        # Create a bash script
         task4 = Task(
-            description=f"Create a bash script for {env_type} environment setup using the following commands:\n{json.dumps(commands)}",
+            description=f"Create a bash script for {env_type} environment setup using the following commands: {json.dumps(commands)}",
             agent=bash_agent,
             expected_output=f"A complete bash script that sets up the {env_type} environment and installs all required packages"
         )
-
         bash_script_content = bash_agent.execute_task(task4)
         print("Bash script content:", bash_script_content)
 

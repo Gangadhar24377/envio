@@ -1,10 +1,10 @@
 #!/bin/bash
 LOG_FILE="log.txt"
 exec > >(tee -a $LOG_FILE) 2>&1
-echo 'Setting up environment: conda'
+echo 'Setting up environment: conda2'
 
 # Create the virtual environment
-VENV_NAME="conda"
+VENV_NAME="conda2"
 echo "Creating environment '${VENV_NAME}'..."
 
 if [ "conda" == "conda" ]; then
@@ -31,7 +31,7 @@ fi
 
 # Install required packages
 echo "Installing required packages..."
-['conda create --name myenv numpy']
+['conda create --name myenv python=3', 'conda activate myenv', 'conda install numpy=1.21.0', 'conda install pandas=1.3.0']
 
 # Deactivate the environment
 echo "Deactivating environment..."
