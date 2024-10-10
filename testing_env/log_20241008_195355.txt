@@ -1,0 +1,56 @@
+Setting up environment: eemrush
+Creating environment 'eemrush'...
+Activating environment...
+Upgrading pip...
+Requirement already satisfied: pip in ./eemrush/lib/python3.10/site-packages (23.0.1)
+Collecting pip
+  Using cached pip-24.2-py3-none-any.whl (1.8 MB)
+Installing collected packages: pip
+  Attempting uninstall: pip
+    Found existing installation: pip 23.0.1
+    Uninstalling pip-23.0.1:
+      Successfully uninstalled pip-23.0.1
+Successfully installed pip-24.2
+Installing required packages...
+Collecting matplotlib==3.9.2
+  Using cached matplotlib-3.9.2-cp310-cp310-macosx_11_0_arm64.whl.metadata (11 kB)
+Collecting contourpy>=1.0.1 (from matplotlib==3.9.2)
+  Using cached contourpy-1.3.0-cp310-cp310-macosx_11_0_arm64.whl.metadata (5.4 kB)
+Collecting cycler>=0.10 (from matplotlib==3.9.2)
+  Using cached cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
+Collecting fonttools>=4.22.0 (from matplotlib==3.9.2)
+  Using cached fonttools-4.54.1-cp310-cp310-macosx_11_0_arm64.whl.metadata (163 kB)
+Collecting kiwisolver>=1.3.1 (from matplotlib==3.9.2)
+  Using cached kiwisolver-1.4.7-cp310-cp310-macosx_11_0_arm64.whl.metadata (6.3 kB)
+Collecting numpy>=1.23 (from matplotlib==3.9.2)
+  Using cached numpy-2.1.2-cp310-cp310-macosx_14_0_arm64.whl.metadata (60 kB)
+Collecting packaging>=20.0 (from matplotlib==3.9.2)
+  Using cached packaging-24.1-py3-none-any.whl.metadata (3.2 kB)
+Collecting pillow>=8 (from matplotlib==3.9.2)
+  Using cached pillow-10.4.0-cp310-cp310-macosx_11_0_arm64.whl.metadata (9.2 kB)
+Collecting pyparsing>=2.3.1 (from matplotlib==3.9.2)
+  Using cached pyparsing-3.1.4-py3-none-any.whl.metadata (5.1 kB)
+Collecting python-dateutil>=2.7 (from matplotlib==3.9.2)
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting six>=1.5 (from python-dateutil>=2.7->matplotlib==3.9.2)
+  Using cached six-1.16.0-py2.py3-none-any.whl.metadata (1.8 kB)
+Using cached matplotlib-3.9.2-cp310-cp310-macosx_11_0_arm64.whl (7.8 MB)
+Using cached contourpy-1.3.0-cp310-cp310-macosx_11_0_arm64.whl (249 kB)
+Using cached cycler-0.12.1-py3-none-any.whl (8.3 kB)
+Using cached fonttools-4.54.1-cp310-cp310-macosx_11_0_arm64.whl (2.3 MB)
+Using cached kiwisolver-1.4.7-cp310-cp310-macosx_11_0_arm64.whl (64 kB)
+Using cached numpy-2.1.2-cp310-cp310-macosx_14_0_arm64.whl (5.4 MB)
+Using cached packaging-24.1-py3-none-any.whl (53 kB)
+Using cached pillow-10.4.0-cp310-cp310-macosx_11_0_arm64.whl (3.4 MB)
+Using cached pyparsing-3.1.4-py3-none-any.whl (104 kB)
+Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Using cached six-1.16.0-py2.py3-none-any.whl (11 kB)
+Installing collected packages: six, pyparsing, pillow, packaging, numpy, kiwisolver, fonttools, cycler, python-dateutil, contourpy, matplotlib
+Successfully installed contourpy-1.3.0 cycler-0.12.1 fonttools-4.54.1 kiwisolver-1.4.7 matplotlib-3.9.2 numpy-2.1.2 packaging-24.1 pillow-10.4.0 pyparsing-3.1.4 python-dateutil-2.9.0.post0 six-1.16.0
+Requirement already satisfied: numpy==2.1.2 in ./eemrush/lib/python3.10/site-packages (2.1.2)
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+source /Users/saieeshwar/College/capstone/envio/testing_env/eemrush/bin/activate
+Log file created at: /Users/saieeshwar/College/capstone/envio/testing_env/log_20241008_195355.txt
+Press any key to close this terminal...
