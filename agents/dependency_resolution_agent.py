@@ -1,9 +1,6 @@
-# agents/dependency_resolution_agent.py
-from crewai import Agent
-from langchain_openai import ChatOpenAI
+from crewai import Agent, LLM  # Use LiteLLM to interface with Ollama locally
 from tools.package_lookup import PackageLookupTool
 from tools.serper_search import SerperSearchTool
-import os
 
 class DependencyResolutionAgent(Agent):
     def __init__(self):
@@ -17,7 +14,7 @@ class DependencyResolutionAgent(Agent):
             goal="Resolve package dependencies and conflicts",
             backstory="I am an AI specialized in managing package dependencies and resolving conflicts.",
             verbose=True,
-            llm=ChatOpenAI(model_name="gpt-4o-mini", temperature=0, api_key=os.getenv("OPENAI_API_KEY")),
+            llm=LLM(model="ollama/deepseek-coder-v2:latest", base_url="http://localhost:11434"),  # Indicating usage of Ollama for local LLM
             tools=[package_lookup_tool, serper_search_tool]
         )
 

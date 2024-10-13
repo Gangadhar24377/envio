@@ -1,7 +1,4 @@
-# agents/command_construction_agent.py
-from crewai import Agent
-from langchain_openai import ChatOpenAI
-import os
+from crewai import Agent, LLM
 import json
 
 class CommandConstructionAgent(Agent):
@@ -12,7 +9,7 @@ class CommandConstructionAgent(Agent):
             goal="Generate appropriate environment setup commands for pip or conda",
             backstory="I am an AI specialized in creating command-line instructions for setting up development environments using pip or conda.",
             verbose=True,
-            llm=ChatOpenAI(model_name="gpt-4o-mini", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
+            llm=LLM(model="ollama/deepseek-coder-v2:latest", base_url="http://localhost:11434")  # Indicating usage of Ollama for local LLM
         )
 
     def generate_commands(self, env_type, python_version, packages, env_name):
