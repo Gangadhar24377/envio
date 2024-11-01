@@ -9,7 +9,7 @@ class CommandConstructionAgent(Agent):
             goal="Generate appropriate environment setup commands for pip or conda",
             backstory="I am an AI specialized in creating command-line instructions for setting up development environments using pip or conda.",
             verbose=True,
-            llm=LLM(model="ollama/deepseek-coder-v2:latest", base_url="http://localhost:11434")  # Indicating usage of Ollama for local LLM
+            llm=LLM(model="ollama/llama3.2:latest", base_url="http://localhost:11434")  # Indicating usage of Ollama for local LLM
         )
 
     def generate_commands(self, env_type, python_version, packages, env_name):
@@ -44,8 +44,10 @@ class CommandConstructionAgent(Agent):
             try:
                 # Clean and parse the response
                 cleaned_response = response.strip().strip('`').replace('\n', '').replace('\\n', '')
+                print(cleaned_response)
+                print('----')
                 parsed_response = json.loads(cleaned_response)
-                
+                print(parsed_response)
                 # Ensure the environment type matches
                 if parsed_response.get('environment_type', '').lower() != env_type.lower():
                     raise ValueError(f"Environment type mismatch. Expected {env_type}, got {parsed_response.get('environment_type')}")

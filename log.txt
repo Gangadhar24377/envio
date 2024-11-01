@@ -176,4 +176,221 @@ Deactivating environment...
 Environment setup completed successfully!
 To activate the environment, run:
 conda activate test
+Press any key to close this terminal...Setting up environment: /Users/saieeshwar/College/capstone/envio/testing_env
+Creating environment '/Users/saieeshwar/College/capstone/envio/testing_env'...
+
+CondaValueError: Invalid environment name: '/Users/saieeshwar/College/capstone/envio/testing_env'
+Characters not allowed: {'/', ' ', '#', ':'}
+If you are specifying a path to an environment, the `-p`
+flag should be used instead.
+
+
+Activating environment...
+
+EnvironmentLocationNotFound: Not a conda environment: /Users/saieeshwar/College/capstone/envio/testing_env
+
+Installing required packages...
+setup_env.sh: line 34: [conda create --name ml_env python=3.9.0,: command not found
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+conda activate /Users/saieeshwar/College/capstone/envio/testing_env
+Press any key to close this terminal...Setting up environment: enter
+Creating environment 'enter'...
+Retrieving notices: ...working... done
+Channels:
+ - conda-forge
+ - defaults
+Platform: osx-arm64
+Collecting package metadata (repodata.json): ...working... done
+Solving environment: ...working... done
+
+## Package Plan ##
+
+  environment location: /Users/saieeshwar/miniforge3/envs/enter
+
+  added / updated specs:
+    - python=3.9
+
+
+The following packages will be downloaded:
+
+    package                    |            build
+    ---------------------------|-----------------
+    python-3.9.20              |h9e33284_1_cpython        11.3 MB  conda-forge
+    ------------------------------------------------------------
+                                           Total:        11.3 MB
+
+The following NEW packages will be INSTALLED:
+
+  bzip2              conda-forge/osx-arm64::bzip2-1.0.8-h99b78c6_7 
+  ca-certificates    conda-forge/osx-arm64::ca-certificates-2024.8.30-hf0a4a13_0 
+  libffi             conda-forge/osx-arm64::libffi-3.4.2-h3422bc3_5 
+  libsqlite          conda-forge/osx-arm64::libsqlite-3.46.1-hc14010f_0 
+  libzlib            conda-forge/osx-arm64::libzlib-1.3.1-h8359307_2 
+  ncurses            conda-forge/osx-arm64::ncurses-6.5-h7bae524_1 
+  openssl            conda-forge/osx-arm64::openssl-3.3.2-h8359307_0 
+  pip                conda-forge/noarch::pip-24.2-pyh8b19718_1 
+  python             conda-forge/osx-arm64::python-3.9.20-h9e33284_1_cpython 
+  readline           conda-forge/osx-arm64::readline-8.2-h92ec313_1 
+  setuptools         conda-forge/noarch::setuptools-75.1.0-pyhd8ed1ab_0 
+  tk                 conda-forge/osx-arm64::tk-8.6.13-h5083fa2_1 
+  tzdata             conda-forge/noarch::tzdata-2024b-hc8b5060_0 
+  wheel              conda-forge/noarch::wheel-0.44.0-pyhd8ed1ab_0 
+  xz                 conda-forge/osx-arm64::xz-5.2.6-h57fd34a_0 
+
+
+
+Downloading and Extracting Packages: ...working... done
+Preparing transaction: ...working... done
+Verifying transaction: ...working... WARNING conda.core.path_actions:verify(1050): Unable to create environments file. Path not writable.
+  environment location: /Users/saieeshwar/.conda/environments.txt
+
+done
+Executing transaction: ...working... WARNING conda.core.envs_manager:register_env(87): Unable to register environment. Path not writable or missing.
+  environment location: /Users/saieeshwar/miniforge3/envs/enter
+  registry file: /Users/saieeshwar/.conda/environments.txt
+done
+#
+# To activate this environment, use
+#
+#     $ conda activate enter
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+Activating environment...
+Installing required packages...
+setup_env.sh: line 34: [conda activate your_environment_name,: command not found
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+conda activate enter
+Press any key to close this terminal...Setting up environment: log
+Creating environment ''...
+Channels:
+ - conda-forge
+ - defaults
+Platform: osx-arm64
+Collecting package metadata (repodata.json): ...working... done
+Solving environment: ...working... done
+
+## Package Plan ##
+
+  environment location: /Users/saieeshwar/miniforge3/envs/log
+
+  added / updated specs:
+    - python=3.9
+
+
+The following NEW packages will be INSTALLED:
+
+  bzip2              conda-forge/osx-arm64::bzip2-1.0.8-h99b78c6_7 
+  ca-certificates    conda-forge/osx-arm64::ca-certificates-2024.8.30-hf0a4a13_0 
+  libffi             conda-forge/osx-arm64::libffi-3.4.2-h3422bc3_5 
+  libsqlite          conda-forge/osx-arm64::libsqlite-3.46.1-hc14010f_0 
+  libzlib            conda-forge/osx-arm64::libzlib-1.3.1-h8359307_2 
+  ncurses            conda-forge/osx-arm64::ncurses-6.5-h7bae524_1 
+  openssl            conda-forge/osx-arm64::openssl-3.3.2-h8359307_0 
+  pip                conda-forge/noarch::pip-24.2-pyh8b19718_1 
+  python             conda-forge/osx-arm64::python-3.9.20-h9e33284_1_cpython 
+  readline           conda-forge/osx-arm64::readline-8.2-h92ec313_1 
+  setuptools         conda-forge/noarch::setuptools-75.1.0-pyhd8ed1ab_0 
+  tk                 conda-forge/osx-arm64::tk-8.6.13-h5083fa2_1 
+  tzdata             conda-forge/noarch::tzdata-2024b-hc8b5060_0 
+  wheel              conda-forge/noarch::wheel-0.44.0-pyhd8ed1ab_0 
+  xz                 conda-forge/osx-arm64::xz-5.2.6-h57fd34a_0 
+
+
+
+Downloading and Extracting Packages: ...working... done
+Preparing transaction: ...working... done
+Verifying transaction: ...working... WARNING conda.core.path_actions:verify(1050): Unable to create environments file. Path not writable.
+  environment location: /Users/saieeshwar/.conda/environments.txt
+
+done
+Executing transaction: ...working... WARNING conda.core.envs_manager:register_env(87): Unable to register environment. Path not writable or missing.
+  environment location: /Users/saieeshwar/miniforge3/envs/log
+  registry file: /Users/saieeshwar/.conda/environments.txt
+done
+#
+# To activate this environment, use
+#
+#     $ conda activate log
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+Activating environment...
+Installing required packages...
+setup_env.sh: line 37: [conda create --name env_name python=3.9,: command not found
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+conda activate log
+Press any key to close this terminal...Setting up environment: eesh
+Creating environment ''...
+Channels:
+ - conda-forge
+ - defaults
+Platform: osx-arm64
+Collecting package metadata (repodata.json): ...working... done
+Solving environment: ...working... done
+
+## Package Plan ##
+
+  environment location: /Users/saieeshwar/miniforge3/envs/eesh
+
+  added / updated specs:
+    - python=3.9
+
+
+The following NEW packages will be INSTALLED:
+
+  bzip2              conda-forge/osx-arm64::bzip2-1.0.8-h99b78c6_7 
+  ca-certificates    conda-forge/osx-arm64::ca-certificates-2024.8.30-hf0a4a13_0 
+  libffi             conda-forge/osx-arm64::libffi-3.4.2-h3422bc3_5 
+  libsqlite          conda-forge/osx-arm64::libsqlite-3.46.1-hc14010f_0 
+  libzlib            conda-forge/osx-arm64::libzlib-1.3.1-h8359307_2 
+  ncurses            conda-forge/osx-arm64::ncurses-6.5-h7bae524_1 
+  openssl            conda-forge/osx-arm64::openssl-3.3.2-h8359307_0 
+  pip                conda-forge/noarch::pip-24.2-pyh8b19718_1 
+  python             conda-forge/osx-arm64::python-3.9.20-h9e33284_1_cpython 
+  readline           conda-forge/osx-arm64::readline-8.2-h92ec313_1 
+  setuptools         conda-forge/noarch::setuptools-75.1.0-pyhd8ed1ab_0 
+  tk                 conda-forge/osx-arm64::tk-8.6.13-h5083fa2_1 
+  tzdata             conda-forge/noarch::tzdata-2024b-hc8b5060_0 
+  wheel              conda-forge/noarch::wheel-0.44.0-pyhd8ed1ab_0 
+  xz                 conda-forge/osx-arm64::xz-5.2.6-h57fd34a_0 
+
+
+
+Downloading and Extracting Packages: ...working... done
+Preparing transaction: ...working... done
+Verifying transaction: ...working... WARNING conda.core.path_actions:verify(1050): Unable to create environments file. Path not writable.
+  environment location: /Users/saieeshwar/.conda/environments.txt
+
+done
+Executing transaction: ...working... WARNING conda.core.envs_manager:register_env(87): Unable to register environment. Path not writable or missing.
+  environment location: /Users/saieeshwar/miniforge3/envs/eesh
+  registry file: /Users/saieeshwar/.conda/environments.txt
+done
+#
+# To activate this environment, use
+#
+#     $ conda activate eesh
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+Activating environment...
+Installing required packages...
+setup_env.sh: line 37: [conda create --name env_name python=3.9,: command not found
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+conda activate eesh
 Press any key to close this terminal...
