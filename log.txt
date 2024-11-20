@@ -1,0 +1,234 @@
+Setting up environment: eem
+Creating environment 'eem'...
+Collecting package metadata (current_repodata.json): ...working... done
+Solving environment: ...working... done
+
+
+==> WARNING: A newer version of conda exists. <==
+  current version: 23.5.2
+  latest version: 24.9.2
+
+Please update conda by running
+
+    $ conda update -n base -c defaults conda
+
+Or to minimize the number of packages updated during conda update use
+
+     conda install conda=24.9.2
+
+
+
+## Package Plan ##
+
+  environment location: /opt/homebrew/anaconda3/envs/eem
+
+  added / updated specs:
+    - python=3.9
+
+
+The following NEW packages will be INSTALLED:
+
+  bzip2              conda-forge/osx-arm64::bzip2-1.0.8-h99b78c6_7 
+  ca-certificates    conda-forge/osx-arm64::ca-certificates-2024.8.30-hf0a4a13_0 
+  libffi             conda-forge/osx-arm64::libffi-3.4.2-h3422bc3_5 
+  libsqlite          conda-forge/osx-arm64::libsqlite-3.47.0-hbaaea75_1 
+  libzlib            conda-forge/osx-arm64::libzlib-1.3.1-h8359307_2 
+  ncurses            conda-forge/osx-arm64::ncurses-6.5-h7bae524_1 
+  openssl            conda-forge/osx-arm64::openssl-3.4.0-h39f12f2_0 
+  pip                conda-forge/noarch::pip-24.3.1-pyh8b19718_0 
+  python             conda-forge/osx-arm64::python-3.9.20-h9e33284_1_cpython 
+  readline           conda-forge/osx-arm64::readline-8.2-h92ec313_1 
+  setuptools         conda-forge/noarch::setuptools-75.5.0-pyhff2d567_0 
+  tk                 conda-forge/osx-arm64::tk-8.6.13-h5083fa2_1 
+  tzdata             conda-forge/noarch::tzdata-2024b-hc8b5060_0 
+  wheel              conda-forge/noarch::wheel-0.45.0-pyhd8ed1ab_0 
+  xz                 conda-forge/osx-arm64::xz-5.2.6-h57fd34a_0 
+
+
+
+Downloading and Extracting Packages
+
+Preparing transaction: ...working... done
+Verifying transaction: ...working... WARNING conda.core.path_actions:verify(1247): Unable to create environments file. Path not writable.
+  environment location: /Users/saieeshwar/.conda/environments.txt
+
+done
+Executing transaction: ...working... WARNING conda.core.envs_manager:register_env(51): Unable to register environment. Path not writable or missing.
+  environment location: /opt/homebrew/anaconda3/envs/eem
+  registry file: /Users/saieeshwar/.conda/environments.txt
+done
+#
+# To activate this environment, use
+#
+#     $ conda activate eem
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+Activating environment...
+Installing required packages...
+setup_env.sh: line 34: [conda create --name myenv python=3.9,: command not found
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+conda activate eem
+Press any key to close this terminal...Setting up environment: avi
+Creating environment 'avi'...
+Channels:
+ - conda-forge
+ - defaults
+Platform: osx-arm64
+Collecting package metadata (repodata.json): ...working... done
+Solving environment: ...working... done
+
+
+==> WARNING: A newer version of conda exists. <==
+    current version: 24.9.1
+    latest version: 24.9.2
+
+Please update conda by running
+
+    $ conda update -n base -c conda-forge conda
+
+
+
+## Package Plan ##
+
+  environment location: /opt/homebrew/anaconda3/envs/avi
+
+  added / updated specs:
+    - python=3.9
+
+
+The following packages will be downloaded:
+
+    package                    |            build
+    ---------------------------|-----------------
+    openssl-3.4.0              |       h39f12f2_0         2.8 MB  conda-forge
+    setuptools-75.5.0          |     pyhff2d567_0         754 KB  conda-forge
+    wheel-0.45.0               |     pyhd8ed1ab_0          61 KB  conda-forge
+    ------------------------------------------------------------
+                                           Total:         3.6 MB
+
+The following NEW packages will be INSTALLED:
+
+  bzip2              conda-forge/osx-arm64::bzip2-1.0.8-h99b78c6_7 
+  ca-certificates    conda-forge/osx-arm64::ca-certificates-2024.8.30-hf0a4a13_0 
+  libffi             conda-forge/osx-arm64::libffi-3.4.2-h3422bc3_5 
+  libsqlite          conda-forge/osx-arm64::libsqlite-3.47.0-hbaaea75_1 
+  libzlib            conda-forge/osx-arm64::libzlib-1.3.1-h8359307_2 
+  ncurses            conda-forge/osx-arm64::ncurses-6.5-h7bae524_1 
+  openssl            conda-forge/osx-arm64::openssl-3.4.0-h39f12f2_0 
+  pip                conda-forge/noarch::pip-24.3.1-pyh8b19718_0 
+  python             conda-forge/osx-arm64::python-3.9.20-h9e33284_1_cpython 
+  readline           conda-forge/osx-arm64::readline-8.2-h92ec313_1 
+  setuptools         conda-forge/noarch::setuptools-75.5.0-pyhff2d567_0 
+  tk                 conda-forge/osx-arm64::tk-8.6.13-h5083fa2_1 
+  tzdata             conda-forge/noarch::tzdata-2024b-hc8b5060_0 
+  wheel              conda-forge/noarch::wheel-0.45.0-pyhd8ed1ab_0 
+  xz                 conda-forge/osx-arm64::xz-5.2.6-h57fd34a_0 
+
+
+
+Downloading and Extracting Packages: ...working... done
+Preparing transaction: ...working... done
+Verifying transaction: ...working... WARNING conda.core.path_actions:verify(1050): Unable to create environments file. Path not writable.
+  environment location: /Users/saieeshwar/.conda/environments.txt
+
+done
+Executing transaction: ...working... WARNING conda.core.envs_manager:register_env(87): Unable to register environment. Path not writable or missing.
+  environment location: /opt/homebrew/anaconda3/envs/avi
+  registry file: /Users/saieeshwar/.conda/environments.txt
+done
+#
+# To activate this environment, use
+#
+#     $ conda activate avi
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+Activating environment...
+Installing required packages...
+setup_env.sh: line 34: [conda create -n myenv python=3.8,: command not found
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+conda activate avi
+Press any key to close this terminal...Setting up environment: ganga
+Creating environment 'ganga'...
+Channels:
+ - conda-forge
+ - defaults
+Platform: osx-arm64
+Collecting package metadata (repodata.json): ...working... done
+Solving environment: ...working... done
+
+
+==> WARNING: A newer version of conda exists. <==
+    current version: 24.9.1
+    latest version: 24.9.2
+
+Please update conda by running
+
+    $ conda update -n base -c conda-forge conda
+
+
+
+## Package Plan ##
+
+  environment location: /opt/homebrew/anaconda3/envs/ganga
+
+  added / updated specs:
+    - python=3.9
+
+
+The following NEW packages will be INSTALLED:
+
+  bzip2              conda-forge/osx-arm64::bzip2-1.0.8-h99b78c6_7 
+  ca-certificates    conda-forge/osx-arm64::ca-certificates-2024.8.30-hf0a4a13_0 
+  libffi             conda-forge/osx-arm64::libffi-3.4.2-h3422bc3_5 
+  libsqlite          conda-forge/osx-arm64::libsqlite-3.47.0-hbaaea75_1 
+  libzlib            conda-forge/osx-arm64::libzlib-1.3.1-h8359307_2 
+  ncurses            conda-forge/osx-arm64::ncurses-6.5-h7bae524_1 
+  openssl            conda-forge/osx-arm64::openssl-3.4.0-h39f12f2_0 
+  pip                conda-forge/noarch::pip-24.3.1-pyh8b19718_0 
+  python             conda-forge/osx-arm64::python-3.9.20-h9e33284_1_cpython 
+  readline           conda-forge/osx-arm64::readline-8.2-h92ec313_1 
+  setuptools         conda-forge/noarch::setuptools-75.5.0-pyhff2d567_0 
+  tk                 conda-forge/osx-arm64::tk-8.6.13-h5083fa2_1 
+  tzdata             conda-forge/noarch::tzdata-2024b-hc8b5060_0 
+  wheel              conda-forge/noarch::wheel-0.45.0-pyhd8ed1ab_0 
+  xz                 conda-forge/osx-arm64::xz-5.2.6-h57fd34a_0 
+
+
+
+Downloading and Extracting Packages: ...working... done
+Preparing transaction: ...working... done
+Verifying transaction: ...working... WARNING conda.core.path_actions:verify(1050): Unable to create environments file. Path not writable.
+  environment location: /Users/saieeshwar/.conda/environments.txt
+
+done
+Executing transaction: ...working... WARNING conda.core.envs_manager:register_env(87): Unable to register environment. Path not writable or missing.
+  environment location: /opt/homebrew/anaconda3/envs/ganga
+  registry file: /Users/saieeshwar/.conda/environments.txt
+done
+#
+# To activate this environment, use
+#
+#     $ conda activate ganga
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+Activating environment...
+Installing required packages...
+setup_env.sh: line 34: [conda create --name myenv python=3.13.0 conda=24.9.2 mlpack=4.5.0,: command not found
+Deactivating environment...
+Environment setup completed successfully!
+To activate the environment, run:
+conda activate ganga
+Press any key to close this terminal...

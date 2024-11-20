@@ -1,34 +1,54 @@
-```bash
 #!/bin/bash
+LOG_FILE="log.txt"
+exec > >(tee -a $LOG_FILE) 2>&1
+echo 'Setting up environment: ganga'
 
-# This script sets up a Python virtual environment and installs the required packages.
+# Create the virtual environment
+VENV_NAME="ganga"
+echo "Creating environment '${VENV_NAME}'..."
 
-# Define the name of the virtual environment
-VENV_NAME="myenv"
-
-# Create a virtual environment
-echo "Creating virtual environment: $VENV_NAME"
-python3 -m venv $VENV_NAME
+if [ "conda" == "conda" ]; then
+    conda create -y -n $VENV_NAME python=3.9
+else
+    cd 
+    python3 -m venv $VENV_NAME
+fi
 
 # Activate the virtual environment
-echo "Activating virtual environment: $VENV_NAME"
-source $VENV_NAME/bin/activate
+echo "Activating environment..."
+if [ "conda" == "conda" ]; then
+    source $(conda info --base)/etc/profile.d/conda.sh
+    conda activate $VENV_NAME
+else
+    source $VENV_NAME/bin/activate
+fi
 
-# Upgrade pip to the latest version
-echo "Upgrading pip to the latest version"
-pip install --upgrade pip
+# Upgrade pip to the latest version if using pip
+if [ "conda" == "pip" ]; then
+    echo "Upgrading pip..."
+    pip install --upgrade pip
+fi
 
 # Install required packages
 echo "Installing required packages..."
-pip install torch==1.0.2
-pip install scikit-learn==1.5.2
-pip install numpy==2.1.1
-pip install pandas==2.2.3
-pip install matplotlib==3.9.2
+['conda create --name myenv python=3.13.0 conda=24.9.2 mlpack=4.5.0', 'conda activate myenv']
 
-# Deactivate the virtual environment
-echo "Deactivating virtual environment"
-deactivate
+# Deactivate the environment
+echo "Deactivating environment..."
+if [ "conda" == "conda" ]; then
+    conda deactivate
+else
+    deactivate
+fi
 
-echo "Environment setup complete. To activate the environment, run: source $VENV_NAME/bin/activate"
-```
+echo 'Environment setup completed successfully!'
+
+# Instructions for activating the environment
+echo 'To activate the environment, run:'
+if [ "conda" == "conda" ]; then
+    echo "conda activate $VENV_NAME"
+else
+    echo "source /$VENV_NAME/bin/activate"
+fi
+
+read -p 'Press any key to close this terminal...'

@@ -9,7 +9,7 @@ class NLPAgent(Agent):
             goal="Extract package information and environment type from user input",
             backstory="I am an AI specialized in understanding and processing natural language inputs related to package management.",
             verbose=True,
-            llm=LLM(model="ollama/deepseek-coder-v2:latest", base_url="http://localhost:11434")  # Indicating usage of Ollama for local LLM
+            llm=LLM(model="ollama/llama3.2:latest", base_url="http://localhost:11434")  # Indicating usage of Ollama for local LLM
         )
 
     def extract_package_info(self, user_input):

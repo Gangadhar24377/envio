@@ -3,6 +3,7 @@ import subprocess
 import sys
 import json
 import time
+import re
 from prompt_toolkit import prompt
 from dotenv import load_dotenv
 import litellm
@@ -138,18 +139,38 @@ def main():
         extracted_info = nlp_agent.execute_task(task1)
         print("Extracted info:", extracted_info)
 
-        try:
-            extracted_data = json.loads(extracted_info)
-            env_type = extracted_data.get('environment_type', '').lower()
-            if not env_type or env_type not in ['pip', 'conda']:
-                env_type = prompt("Please specify the environment type (pip/conda): ").lower()
-                while env_type not in ['pip', 'conda']:
-                    env_type = prompt("Invalid input. Please enter either 'pip' or 'conda': ").lower()
-            print(f"Using environment type: {env_type}")
-        except json.JSONDecodeError:
+        # Manual parsing of extracted_info
+        env_type = None
+        env_name = None
+        package_name = None
+        version = "latest"  # Default to latest if not specified
+
+        # Use regular expressions to extract information
+        env_type_match = re.search(r"Environment Type: (\w+)", extracted_info)
+        env_name_match = re.search(r"Environment Name: ([\w-]+)", extracted_info)
+        package_name_match = re.search(r"Package Name: ([\w\s]+)", extracted_info)
+        version_match = re.search(r"Version: ([\w\s]+)", extracted_info)
+
+        if env_type_match:
+            env_type = env_type_match.group(1).strip().lower()
+        else:
             env_type = prompt("Could not determine environment type. Please specify (pip/conda): ").lower()
             while env_type not in ['pip', 'conda']:
                 env_type = prompt("Invalid input. Please enter either 'pip' or 'conda': ").lower()
+
+        if env_name_match:
+            env_name = env_name_match.group(1).strip()
+
+        if package_name_match:
+            package_name = package_name_match.group(1).strip()
+
+        if version_match and "Not specified" not in version_match.group(1):
+            version = version_match.group(1).strip()
+
+        print(f"Using environment type: {env_type}")
+        print(f"Environment name: {env_name}")
+        print(f"Package name: {package_name}")
+        print(f"Version: {version}")
 
         task2 = Task(
             description=f"Resolve package dependencies based on the extracted information:\n{extracted_info}",
@@ -210,9 +231,12 @@ def main():
         else:
             print("Conda environment will be set up in the default Conda directory.")
 
-        env_name = prompt("Enter the name for the environment (or press Enter for default):\n")
-        if not env_name.strip():
-            env_name = f"env_setup_{int(time.time())}"
+        if not env_name:
+            env_name = prompt("Enter the name for the environment (or press Enter for default):\n")
+            if not env_name.strip():
+                env_name = f"env_setup_{int(time.time())}"
+
+        print(f"Environment name: {env_name}")
 
         execute_setup_commands(commands, env_path, env_name, use_conda=(env_type == 'conda'))
 
@@ -220,6 +244,7 @@ def main():
         print(f"An error occurred: {str(e)}")
         print("Please check your API keys and network connection.")
         print("If the problem persists, please report this issue.")
+
 
 if __name__ == "__main__":
     main()
