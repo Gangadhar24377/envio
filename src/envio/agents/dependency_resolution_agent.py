@@ -16,6 +16,7 @@ from envio.resolution.fast_resolver import (
     ResolutionResult,
     ResolutionStatus,
 )
+from envio.resolution.self_healing import SelfHealingLoop
 
 if TYPE_CHECKING:
     from envio.core.system_profiler import SystemProfile
@@ -28,6 +29,7 @@ class DependencyResolver:
         self._llm = LLMClient(config)
         self._parser = ResponseParser()
         self._fast_resolver = FastResolver()
+        self._healing_loop = SelfHealingLoop()
 
     def resolve(
         self,
@@ -47,7 +49,6 @@ class DependencyResolver:
         Returns:
             Dictionary with resolved packages and metadata
         """
-        # Respect user preference for CPU-only mode
         cpu_only = preferences.get("cpu_only", False) if preferences else False
 
         if hardware_profile and hardware_profile.gpu.available and not cpu_only:
@@ -69,6 +70,59 @@ class DependencyResolver:
             return self._handle_not_found(packages, fast_result, env_type)
 
         return self._handle_error(packages, fast_result, env_type)
+
+    def heal_and_resolve(
+        self,
+        packages: list[str],
+        error_message: str,
+        env_type: str = "pip",
+    ) -> dict[str, Any]:
+        """Use self-healing to fix failed resolution.
+
+        Args:
+            packages: Original packages that failed
+            error_message: Error message from failed installation
+            env_type: Environment type
+
+        Returns:
+            Dictionary with healed packages and metadata
+        """
+        failed_resolution = ResolutionResult(
+            status=ResolutionStatus.ERROR,
+            packages=packages,
+            error_message=error_message,
+            stderr=error_message,
+            stdout="",
+        )
+
+        healing_result = self._healing_loop.heal(
+            packages, error_message, failed_resolution
+        )
+
+        if healing_result.success:
+            return {
+                "status": "healed",
+                "packages": healing_result.final_packages,
+                "resolution_method": "self_healing",
+                "attempts": healing_result.num_attempts,
+            }
+
+        if healing_result.final_packages != packages:
+            recheck = self._fast_resolver.resolve(healing_result.final_packages)
+            if recheck.is_success():
+                return {
+                    "status": "healed",
+                    "packages": healing_result.final_packages,
+                    "resolution_method": "self_healing_validated",
+                    "attempts": healing_result.num_attempts,
+                }
+
+        return {
+            "status": "failed",
+            "packages": packages,
+            "resolution_method": "self_healing_failed",
+            "error": healing_result.final_error,
+        }
 
     def _optimize_for_hardware(
         self, packages: list[str], profile: SystemProfile
@@ -113,7 +167,7 @@ class DependencyResolver:
         env_type: str,
         preferences: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Handle dependency conflict with AI."""
+        """Handle dependency conflict with AI and re-validation."""
         conflict_info = "\n".join(
             f"- {c.package1} conflicts with {c.package2}: {c.reason}"
             for c in result.conflicts
@@ -142,13 +196,36 @@ class DependencyResolver:
             resolved_packages = self._parser.parse_packages(response)
             warnings = self._parser.parse_warnings(response)
 
-            return {
-                "status": "resolved",
-                "packages": resolved_packages if resolved_packages else packages,
-                "reasoning": response.get("reasoning", ""),
-                "warnings": warnings,
-                "resolution_method": "ai_healed",
-            }
+            recheck = self._fast_resolver.resolve(resolved_packages)
+
+            if recheck.is_success():
+                return {
+                    "status": "resolved",
+                    "packages": resolved_packages if resolved_packages else packages,
+                    "reasoning": response.get("reasoning", ""),
+                    "warnings": warnings,
+                    "resolution_method": "ai_healed_validated",
+                }
+            elif recheck.has_conflicts():
+                return {
+                    "status": "conflict",
+                    "packages": resolved_packages if resolved_packages else packages,
+                    "conflicts": [
+                        {
+                            "package1": c.package1,
+                            "package2": c.package2,
+                            "reason": c.reason,
+                        }
+                        for c in recheck.conflicts
+                    ],
+                    "resolution_method": "ai_healed_unvalidated",
+                }
+            else:
+                return {
+                    "status": "partial",
+                    "packages": resolved_packages if resolved_packages else packages,
+                    "resolution_method": "ai_fallback",
+                }
         except Exception:
             return {
                 "status": "partial",

@@ -551,3 +551,27 @@ class ConsoleUI:
             )
         else:
             print(f"[{ts}] [{step}/{total}] {description}")
+
+    def print_healing_status(self, attempt: int, max_attempts: int, error: str) -> None:
+        """Print self-healing status with streaming indicator."""
+        ts = _timestamp()
+        if self._use_rich:
+            self._safe_print(
+                f"\n[dim]{ts}[/dim] [bold yellow][!] Healing attempt {attempt}/{max_attempts}[/bold yellow]"
+            )
+            error_preview = error[:100] + "..." if len(error) > 100 else error
+            self._safe_print(f"  [dim]Error: {error_preview}[/dim]")
+        else:
+            print(f"\n[{ts}] [!] Healing attempt {attempt}/{max_attempts}")
+            error_preview = error[:100] + "..." if len(error) > 100 else error
+            print(f"  Error: {error_preview}")
+
+    def print_healing_solution(self, solution: str) -> None:
+        """Print AI's suggested solution."""
+        ts = _timestamp()
+        if self._use_rich:
+            self._safe_print(
+                f"  [dim]{ts}[/dim] [bold green]Solution found:[/bold green] {solution}"
+            )
+        else:
+            print(f"  [{ts}] [+] Solution found: {solution}")

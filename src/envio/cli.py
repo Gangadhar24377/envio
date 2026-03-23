@@ -107,68 +107,98 @@ def _resolve_and_install(
     profile,
     console,
 ) -> bool:
-    """Resolve dependencies and install environment."""
+    """Resolve dependencies and install environment with self-healing."""
     resolver = _get_dependency_resolver()
     executor = _get_executor()
     script_gen = _get_script_generator()
 
-    # Display plan
     venv_path = Path(env_path) / env_name
-    console.print_installation_plan(
-        env_name=env_name,
-        env_path=str(venv_path),
-        package_manager=package_manager,
-        packages=packages,
-        preferences=preferences,
-        profile=profile,
-    )
+    max_retries = 3
 
-    # Resolve dependencies
-    console.print_info("Resolving dependencies...")
-    resolved = resolver.resolve(packages, package_manager, profile, preferences)
-    final_packages = resolved.get("packages", packages)
+    for attempt in range(max_retries):
+        # Display plan (only on first attempt)
+        if attempt == 0:
+            console.print_installation_plan(
+                env_name=env_name,
+                env_path=str(venv_path),
+                package_manager=package_manager,
+                packages=packages,
+                preferences=preferences,
+                profile=profile,
+            )
 
-    if resolved.get("status") in ("conflict", "error"):
-        console.print_resolution_status(
-            resolved["status"],
-            resolved.get("resolution_method", "unknown"),
+        # Resolve dependencies
+        console.print_info("Resolving dependencies...")
+        resolved = resolver.resolve(packages, package_manager, profile, preferences)
+        final_packages = resolved.get("packages", packages)
+
+        if resolved.get("status") in ("conflict", "error"):
+            console.print_resolution_status(
+                resolved["status"],
+                resolved.get("resolution_method", "unknown"),
+            )
+
+        console.print_packages_table(final_packages, "Resolved Packages")
+
+        # Generate script
+        console.print_info("Generating installation script...")
+        script_content = script_gen.generate_setup_script(
+            venv_path=str(venv_path),
+            packages=final_packages,
+            package_manager=package_manager,
         )
 
-    console.print_packages_table(final_packages, "Resolved Packages")
-
-    # Generate commands
-    console.print_info("Generating installation script...")
-
-    # Create and execute script
-    script_content = script_gen.generate_setup_script(
-        venv_path=str(venv_path),
-        packages=final_packages,
-        package_manager=package_manager,
-    )
-
-    script_path = executor.write_script(
-        script_content,
-        Path(env_path) / f"envio_setup_{env_name}",
-    )
-
-    console.print_info("Executing installation...")
-    with console.spinner("Installing packages..."):
-        returncode, stdout, stderr = executor.execute_script(
-            script_path,
-            capture_output=True,
-            timeout=300,
+        script_path = executor.write_script(
+            script_content,
+            Path(env_path) / f"envio_setup_{env_name}",
         )
 
-    if returncode == 0:
-        console.print_success("Environment setup completed!")
-        activation_cmd = script_gen.generate_venv_activation_instructions(venv_path)
-        console.print_info("To activate the environment:")
-        console.print_code_block(activation_cmd.strip(), "bash")
-        return True
-    else:
-        console.print_error("Installation failed!")
-        console.print_code_block(stderr or stdout, "bash")
-        return False
+        # Execute script
+        console.print_info("Executing installation...")
+        with console.spinner("Installing packages..."):
+            returncode, stdout, stderr = executor.execute_script(
+                script_path,
+                capture_output=True,
+                timeout=300,
+            )
+
+        if returncode == 0:
+            console.print_success("Environment setup completed!")
+            activation_cmd = script_gen.generate_venv_activation_instructions(venv_path)
+            console.print_info("To activate the environment:")
+            console.print_code_block(activation_cmd.strip(), "bash")
+            return True
+
+        # Self-healing: try to fix the error
+        if attempt < max_retries - 1:
+            error_output = stderr or stdout
+            console.print_warning(
+                f"Installation failed (attempt {attempt + 1}/{max_retries})"
+            )
+            console.print_info("Analyzing error with AI...")
+
+            console.print_healing_status(attempt + 1, max_retries, error_output)
+
+            healing_result = resolver.heal_and_resolve(
+                final_packages, error_output, package_manager
+            )
+
+            if healing_result.get("status") == "healed":
+                console.print_healing_solution(
+                    f"Fixed packages: {healing_result['packages']}"
+                )
+                packages = healing_result["packages"]
+                continue
+            else:
+                console.print_warning(
+                    "Could not find fix, retrying with original packages..."
+                )
+        else:
+            console.print_error("Installation failed after all attempts!")
+            console.print_code_block(stderr or stdout, "bash")
+            return False
+
+    return False
 
 
 def _parse_nlp_result(result: dict) -> tuple[list[str], str, dict]:
