@@ -1,5 +1,5 @@
 """UI module for Envio."""
 
-from envio.ui.console import ConsoleUI, StatusContext
+from envio.ui.console import ConsoleUI
 
-__all__ = ["ConsoleUI", "StatusContext"]
+__all__ = ["ConsoleUI"]

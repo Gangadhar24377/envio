@@ -94,12 +94,17 @@ try {{
         return script
 
     def generate_venv_activation_instructions(self, venv_path: Path) -> str:
-        """Generate PowerShell instructions for activating virtual environment."""
+        """Generate activation instructions for different shells."""
+        # Convert path to string with proper separators for each shell
+        path_str = str(venv_path)
+        # For Git Bash, convert backslashes to forward slashes
+        git_bash_path = path_str.replace("\\", "/")
+
         return f"""
 # To activate the virtual environment, run:
-# PowerShell: & "{venv_path}\\Scripts\\Activate.ps1"
-# CMD: "{venv_path}\\Scripts\\activate.bat"
-# Git Bash: source "{venv_path}/Scripts/activate"
+# PowerShell: & "{path_str}\\Scripts\\Activate.ps1"
+# CMD: "{path_str}\\Scripts\\activate.bat"
+# Git Bash: source "{git_bash_path}/Scripts/activate"
 """
 
     def generate_package_install_script(
@@ -235,9 +240,10 @@ echo "Virtual environment created successfully at: {venv_path}"
 
     def generate_venv_activation_instructions(self, venv_path: Path) -> str:
         """Generate Bash instructions for activating virtual environment."""
+        path_str = str(venv_path).replace("\\", "/")
         return f"""
 # To activate the virtual environment, run:
-source {venv_path}/bin/activate
+source {path_str}/bin/activate
 """
 
     def generate_package_install_script(

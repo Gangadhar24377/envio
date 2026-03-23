@@ -1,4 +1,4 @@
-"""CLI entry point for Envio with user-centric flow."""
+"""Envio CLI - AI-Native Environment Orchestrator."""
 
 from __future__ import annotations
 
@@ -8,22 +8,16 @@ import time
 import traceback
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import click
 
-from envio.agents.command_construction_agent import CommandGenerator
-from envio.agents.dependency_resolution_agent import DependencyResolver
-from envio.agents.nlp_agent import NLPProcessor
-from envio.core.executor import ScriptExecutor
-from envio.core.script_generator import ScriptGeneratorFactory
-from envio.core.system_profiler import SystemProfiler
-from envio.llm.parser import ResponseParser
-from envio.ui.console import ConsoleUI
-
 VALID_PACKAGE_MANAGERS = ["pip", "conda", "uv"]
+
+
+def _load_dotenv() -> None:
+    """Load environment variables from .env file."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
 
 
 def detect_package_managers() -> dict[str, bool]:
@@ -43,160 +37,112 @@ def _is_conda_active() -> bool:
     )
 
 
-def select_package_manager(available: dict[str, bool], console: ConsoleUI) -> str:
-    """Let user select a package manager."""
-    console.print_info("Available package managers:")
-    for pm, is_available in available.items():
-        status = "available" if is_available else "not found"
-        console._print(f"  - {pm} ({status})")
-
-    while True:
-        choice = (
-            input("\nSelect package manager (pip/conda/uv) [default: uv]: ")
-            .strip()
-            .lower()
-        )
-        if not choice:
-            return "uv"
-        if choice in VALID_PACKAGE_MANAGERS:
-            if not available.get(choice, False):
-                console.print_warning(
-                    f"{choice} is not available. Please choose another."
-                )
-                continue
-            return choice
-        console.print_warning(
-            f"Invalid choice. Please choose from: {', '.join(VALID_PACKAGE_MANAGERS)}"
-        )
-
-
-def display_installation_plan(
-    console: ConsoleUI,
-    packages: list[str],
-    env_type: str,
-    install_path: Path,
-    preferences: dict | None,
-    profile,
-) -> None:
-    """Display the installation plan for user confirmation."""
-    console.print_header("Installation Plan")
-
-    print(f"\nEnvironment: {install_path.name}")
-    print(f"Location: {install_path}")
-    print(f"Package Manager: {env_type}")
-
-    # Show preferences
-    pref_display = []
-    if preferences:
-        if preferences.get("cpu_only"):
-            pref_display.append("CPU-only mode")
-        elif preferences.get("gpu_optimized"):
-            pref_display.append("GPU-optimized mode")
-    if pref_display:
-        print(f"Mode: {', '.join(pref_display)}")
-
-    # Show hardware info
+def get_hardware_context(profile) -> str:
+    """Build hardware context string for LLM."""
+    lines = []
     if profile.gpu.available:
-        print(f"\nHardware: {profile.gpu.name}")
-        if profile.gpu.vram_mb:
-            print(f"VRAM: {profile.gpu.vram_mb} MB")
-        if profile.gpu.cuda_version:
-            print(f"CUDA: {profile.gpu.cuda_version}")
-        if preferences and preferences.get("cpu_only"):
-            print("Note: GPU detected but CPU-only mode requested")
+        lines.append(f"Hardware: {profile.gpu.name} GPU detected")
+        lines.append(f"VRAM: {profile.gpu.vram_mb} MB")
+        lines.append(f"CUDA: {profile.gpu.cuda_version}")
     else:
-        print("\nHardware: CPU-only (no GPU detected)")
-
-    # Show packages
-    print(f"\nPackages to install ({len(packages)}):")
-    for pkg in packages:
-        print(f"  - {pkg}")
-
-    print("")
+        lines.append("Hardware: CPU-only (no GPU detected)")
+    return "\n".join(lines)
 
 
-def confirm_installation(console: ConsoleUI) -> bool | str:
-    """Ask user to confirm installation. Returns True, False, or 'modify'."""
-    while True:
-        choice = input("Proceed with installation? (Y/n/modify): ").strip().lower()
-        if choice in ("", "y", "yes"):
-            return True
-        elif choice in ("n", "no"):
-            return False
-        elif choice == "modify":
-            print("\nModify options:")
-            print("  - Type a package name to add it (e.g., 'add torch')")
-            print("  - Type 'remove <package>' to remove it")
-            print("  - Type 'CPU only' to switch to CPU-only mode")
-            print("  - Type 'done' when finished\n")
-            return "modify"
-        else:
-            console.print_warning("Please enter Y, n, or 'modify'")
+def _get_console(verbose: bool):
+    """Lazy load ConsoleUI."""
+    from envio.ui.console import ConsoleUI
+
+    return ConsoleUI(verbose=verbose)
 
 
-def setup_environment(
+def _get_profiler():
+    """Lazy load SystemProfiler."""
+    from envio.core.system_profiler import SystemProfiler
+
+    return SystemProfiler()
+
+
+def _get_nlp_processor():
+    """Lazy load NLPProcessor."""
+    from envio.agents.nlp_agent import NLPProcessor
+
+    return NLPProcessor()
+
+
+def _get_dependency_resolver():
+    """Lazy load DependencyResolver."""
+    from envio.agents.dependency_resolution_agent import DependencyResolver
+
+    return DependencyResolver()
+
+
+def _get_executor():
+    """Lazy load ScriptExecutor."""
+    from envio.core.executor import ScriptExecutor
+
+    return ScriptExecutor()
+
+
+def _get_script_generator():
+    """Lazy load ScriptGeneratorFactory."""
+    from envio.core.script_generator import ScriptGeneratorFactory
+
+    return ScriptGeneratorFactory().create()
+
+
+def _get_response_parser():
+    """Lazy load ResponseParser."""
+    from envio.llm.parser import ResponseParser
+
+    return ResponseParser()
+
+
+def _resolve_and_install(
     packages: list[str],
     env_path: str,
     env_name: str,
-    package_manager: str = "uv",
-    preferences: dict | None = None,
-    verbose: bool = True,
+    package_manager: str,
+    preferences: dict | None,
+    profile,
+    console,
 ) -> bool:
-    """Set up a virtual environment with the specified packages."""
-    console = ConsoleUI(verbose=verbose)
-    profiler = SystemProfiler()
-    executor = ScriptExecutor()
-    generator_factory = ScriptGeneratorFactory()
-    generator = generator_factory.create()
+    """Resolve dependencies and install environment."""
+    resolver = _get_dependency_resolver()
+    executor = _get_executor()
+    script_gen = _get_script_generator()
 
-    profile = profiler.profile()
-
-    # Display installation plan
+    # Display plan
     venv_path = Path(env_path) / env_name
-    display_installation_plan(
-        console, packages, package_manager, venv_path, preferences, profile
+    console.print_installation_plan(
+        env_name=env_name,
+        env_path=str(venv_path),
+        package_manager=package_manager,
+        packages=packages,
+        preferences=preferences,
+        profile=profile,
     )
 
-    # Confirm installation
-    confirmed = confirm_installation(console)
-    if confirmed == "modify":
-        # Handle modification
-        while True:
-            mod_input = input("Modification: ").strip()
-            if mod_input.lower() == "done":
-                break
-            elif mod_input.lower().startswith("add "):
-                pkg = mod_input[4:].strip()
-                if pkg and pkg not in packages:
-                    packages.append(pkg)
-                    console.print_success(f"Added: {pkg}")
-            elif mod_input.lower().startswith("remove "):
-                pkg = mod_input[7:].strip()
-                if pkg in packages:
-                    packages.remove(pkg)
-                    console.print_success(f"Removed: {pkg}")
-            elif "cpu only" in mod_input.lower():
-                if preferences is None:
-                    preferences = {}
-                preferences["cpu_only"] = True
-                console.print_success("Switched to CPU-only mode")
-            else:
-                console.print_warning(f"Unknown command: {mod_input}")
+    # Resolve dependencies
+    console.print_info("Resolving dependencies...")
+    resolved = resolver.resolve(packages, package_manager, profile, preferences)
+    final_packages = resolved.get("packages", packages)
 
-        # Re-display plan
-        display_installation_plan(
-            console, packages, package_manager, venv_path, preferences, profile
+    if resolved.get("status") in ("conflict", "error"):
+        console.print_resolution_status(
+            resolved["status"],
+            resolved.get("resolution_method", "unknown"),
         )
-        confirmed = confirm_installation(console)
 
-    if not confirmed:
-        console.print_warning("Installation cancelled")
-        return False
+    console.print_packages_table(final_packages, "Resolved Packages")
 
-    # Create and execute setup script
-    script_content = generator.generate_setup_script(
+    # Generate commands
+    console.print_info("Generating installation script...")
+
+    # Create and execute script
+    script_content = script_gen.generate_setup_script(
         venv_path=str(venv_path),
-        packages=packages,
+        packages=final_packages,
         package_manager=package_manager,
     )
 
@@ -205,8 +151,8 @@ def setup_environment(
         Path(env_path) / f"envio_setup_{env_name}",
     )
 
-    console.print_info("Executing setup script...")
-    with console.status("Installing packages..."):
+    console.print_info("Executing installation...")
+    with console.spinner("Installing packages..."):
         returncode, stdout, stderr = executor.execute_script(
             script_path,
             capture_output=True,
@@ -214,33 +160,128 @@ def setup_environment(
         )
 
     if returncode == 0:
-        console.print_success("Environment setup completed successfully!")
-        activation_cmd = generator.generate_venv_activation_instructions(venv_path)
-        console.print_info("To activate the environment, run:")
+        console.print_success("Environment setup completed!")
+        activation_cmd = script_gen.generate_venv_activation_instructions(venv_path)
+        console.print_info("To activate the environment:")
         console.print_code_block(activation_cmd.strip(), "bash")
         return True
     else:
-        console.print_error("Environment setup failed!")
-        console.print_info("Output:")
+        console.print_error("Installation failed!")
         console.print_code_block(stderr or stdout, "bash")
         return False
 
 
-def parse_extracted_info(
-    result: dict, console: ConsoleUI
-) -> tuple[list[str], str, dict]:
-    """Parse extracted info and return packages, env type, and preferences."""
-    parser = ResponseParser()
-
+def _parse_nlp_result(result: dict) -> tuple[list[str], str, dict]:
+    """Parse NLP result into packages, env_type, preferences."""
+    parser = _get_response_parser()
     packages = parser.parse_packages(result)
-
     env_type = result.get("environment_type", "uv").lower()
     if env_type not in VALID_PACKAGE_MANAGERS:
         env_type = "uv"
-
     preferences = result.get("preferences", {})
-
     return packages, env_type, preferences
+
+
+def _scan_directory(directory: Path) -> dict | None:
+    """Scan directory for requirements files."""
+    files_to_check = [
+        ("requirements.txt", _parse_requirements_txt),
+        ("pyproject.toml", _parse_pyproject_toml),
+        ("setup.py", _parse_setup_py),
+        ("environment.yml", _parse_environment_yml),
+        ("conda.yml", _parse_environment_yml),
+    ]
+
+    for filename, parser in files_to_check:
+        filepath = directory / filename
+        if filepath.exists():
+            return parser(filepath, filename)
+
+    return None
+
+
+def _parse_requirements_txt(filepath: Path, filename: str) -> dict:
+    """Parse requirements.txt file."""
+    packages = []
+    with open(filepath) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and not line.startswith("-"):
+                packages.append(line)
+    return {
+        "source": filename,
+        "packages": packages,
+        "env_type": "pip",
+    }
+
+
+def _parse_pyproject_toml(filepath: Path, filename: str) -> dict:
+    """Parse pyproject.toml file."""
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+
+    with open(filepath, "rb") as f:
+        data = tomllib.load(f)
+
+    packages = data.get("project", {}).get("dependencies", [])
+    return {
+        "source": filename,
+        "packages": packages,
+        "env_type": "pip",
+    }
+
+
+def _parse_setup_py(filepath: Path, filename: str) -> dict:
+    """Parse setup.py file."""
+    import re
+
+    with open(filepath) as f:
+        content = f.read()
+
+    install_requires = re.findall(
+        r"install_requires\s*=\s*\[(.*?)\]", content, re.DOTALL
+    )
+    if install_requires:
+        packages = re.findall(r'["\']([^"\']+)["\']', install_requires[0])
+        return {
+            "source": filename,
+            "packages": packages,
+            "env_type": "pip",
+        }
+    return {
+        "source": filename,
+        "packages": [],
+        "env_type": "pip",
+    }
+
+
+def _parse_environment_yml(filepath: Path, filename: str) -> dict:
+    """Parse environment.yml file."""
+    try:
+        import yaml
+
+        with open(filepath) as f:
+            data = yaml.safe_load(f)
+
+        packages = data.get("dependencies", [])
+        return {
+            "source": filename,
+            "packages": packages,
+            "env_type": "conda",
+        }
+    except Exception:
+        return {
+            "source": filename,
+            "packages": [],
+            "env_type": "conda",
+        }
+
+
+# =============================================================================
+# CLI COMMANDS
+# =============================================================================
 
 
 @click.group()
@@ -251,129 +292,239 @@ def cli() -> None:
 
 
 @cli.command()
+@click.option(
+    "--env-type", "-e", "env_type", default=None, help="Package manager (pip/conda/uv)"
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-def interactive(verbose: bool) -> None:
-    """Run Envio in interactive mode."""
-    console = ConsoleUI(verbose=verbose)
-    console.print_header("Envio - Interactive Mode")
+def init(env_type: str | None, verbose: bool) -> None:
+    """Initialize environment from directory."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Init", "Scan directory and set up environment")
+
+    profiler = _get_profiler()
+    profile = profiler.profile()
 
     try:
-        available_managers = detect_package_managers()
+        # Detect package managers
+        available = detect_package_managers()
+        console.print_info("Available package managers:")
+        for pm, ok in available.items():
+            status = "available" if ok else "not found"
+            console._safe_print(f"  - {pm} ({status})")
 
-        console.print_info("Detected package managers:")
-        for pm, available in available_managers.items():
-            status = "[+]" if available else "[-]"
-            console._print(f"  {status} {pm}")
+        # Scan directory
+        directory = Path.cwd()
+        console.print_info(f"Scanning {directory}...")
 
-        package_manager = select_package_manager(available_managers, console)
+        detected = _scan_directory(directory)
 
-        nlp_processor = NLPProcessor()
-        dependency_resolver = DependencyResolver()
-        command_generator = CommandGenerator()
-        profiler = SystemProfiler()
-        profile = profiler.profile()
+        if not detected:
+            console.print_warning("No requirements file found")
+            console.print_info("Scanning Python files for imports...")
 
-        # Build hardware context for LLM
-        hw_context_lines = []
-        if profile.gpu.available:
-            hw_context_lines.append(f"Hardware: {profile.gpu.name} GPU detected")
-            hw_context_lines.append(f"VRAM: {profile.gpu.vram_mb} MB")
-            hw_context_lines.append(f"CUDA: {profile.gpu.cuda_version}")
-        else:
-            hw_context_lines.append("Hardware: CPU-only (no GPU detected)")
-        hardware_context = "\n".join(hw_context_lines)
+            # Scan Python files
+            py_files = list(directory.glob("*.py")) + list(directory.glob("**/*.py"))
+            imports = set()
+            for py_file in py_files:
+                try:
+                    import ast
 
-        print("")
-        print(
-            "Enter your package request (e.g., 'set up a Python environment for ML with pytorch')"
-        )
-        print("(You can say 'CPU only', 'use GPU', 'Python 3.11', etc.)")
-        print("")
-        user_input = input("> ")
+                    with open(py_file) as f:
+                        tree = ast.parse(f.read())
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.Import):
+                            for alias in node.names:
+                                imports.add(alias.name.split(".")[0])
+                        elif isinstance(node, ast.ImportFrom):
+                            if node.module:
+                                imports.add(node.module.split(".")[0])
+                except Exception:
+                    pass
 
-        if not user_input.strip():
-            console.print_warning(
-                "No input provided. Using default: basic Python environment"
-            )
-            user_input = "set up a basic Python environment"
+            # Filter out standard library
+            stdlib = {
+                "os",
+                "sys",
+                "re",
+                "json",
+                "time",
+                "datetime",
+                "pathlib",
+                "collections",
+                "itertools",
+                "functools",
+                "typing",
+                "abc",
+                "io",
+                "logging",
+                "unittest",
+                "argparse",
+                "shutil",
+                "glob",
+                "pickle",
+                "copy",
+                "math",
+                "random",
+                "string",
+                "textwrap",
+            }
+            third_party = sorted(imports - stdlib)
 
-        console.print_info("User request received")
-        console.print_agent_thought("User", user_input)
+            if third_party:
+                console.print_info(f"Found {len(third_party)} third-party imports")
+                detected = {
+                    "source": "detected from imports",
+                    "packages": third_party,
+                    "env_type": "uv",
+                }
+            else:
+                console.print_error("No packages detected. Use 'envio prompt' instead.")
+                return
 
-        print("")
-        print("=== Analyzing Your Request ===")
-        print("")
+        # Show detected packages
+        console.print_info(f"Detected from: {detected['source']}")
+        console.print_packages_table(detected["packages"], "Detected Packages")
 
-        def callback(msg: str) -> None:
-            print(msg)
+        # Ask for environment name
+        env_name = input("\nEnvironment name [default: .venv]: ").strip() or ".venv"
+        env_path = str(directory)
 
-        extracted_info = nlp_processor.extract(
-            user_input,
-            hardware_context=hardware_context,
-            callback=callback,
-        )
+        # Use user-specified env_type or detected type
+        final_env_type = env_type if env_type else detected["env_type"]
+        console.print_info(f"Package manager: {final_env_type}")
 
-        packages, _, preferences = parse_extracted_info(extracted_info, console)
-
-        console.print_packages(packages, "\nSuggested Packages")
-
-        console.print_info(f"Using package manager: {package_manager}")
-
-        print("")
-        print("[Resolution] Checking compatibility...")
-        resolved = dependency_resolver.resolve(
-            packages, package_manager, profile, preferences
-        )
-        console.print_agent_thought("Dependency Agent", "Resolution complete")
-        console.print_packages(resolved.get("packages", packages), "Resolved Packages")
-
-        console.print_info("Generating commands...")
-        command_result = command_generator.generate(
-            resolved.get("packages", packages),
-            package_manager,
-            profile,
-            preferences,
-        )
-
-        if not command_result.get("commands"):
-            command_result["commands"] = [
-                f"{package_manager} install " + " ".join(packages)
-            ]
-
-        # Prompt for environment path and name
-        default_path = str(Path.home() / "Documents" / "envs")
-        env_path = (
-            input(f"\nEnvironment path [default: {default_path}]: ").strip()
-            or default_path
-        )
-        env_name = input("Environment name: ").strip()
-        if not env_name:
-            env_name = f"env_setup_{int(time.time())}"
-
-        setup_environment(
-            resolved.get("packages", packages),
-            env_path,
-            env_name,
-            package_manager,
-            preferences,
-            verbose,
+        # Setup environment
+        _resolve_and_install(
+            packages=detected["packages"],
+            env_path=env_path,
+            env_name=env_name,
+            package_manager=final_env_type,
+            preferences={},
+            profile=profile,
+            console=console,
         )
 
     except Exception as e:
-        console.print_error(f"An error occurred: {e}")
-        console.print_info("\nFull traceback:")
-        console._print(traceback.format_exc())
-        console.print_info("Please check your API keys and network connection.")
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+@cli.command()
+@click.argument("prompt_text", nargs=-1, required=True)
+@click.option("--name", "-n", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Environment path")
+@click.option("--env-type", "-e", "env_type", default="uv", help="Package manager")
+@click.option("--cpu-only", is_flag=True, help="Force CPU-only mode")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def prompt(
+    prompt_text: tuple[str, ...],
+    name: str | None,
+    path: str | None,
+    env_type: str,
+    cpu_only: bool,
+    verbose: bool,
+) -> None:
+    """Set up environment from natural language prompt."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Prompt", "Natural language environment setup")
+
+    profiler = _get_profiler()
+    profile = profiler.profile()
+
+    try:
+        user_input = " ".join(prompt_text)
+        console.print_info(f"Request: {user_input}")
+
+        # NLP processing
+        console.print_info("Analyzing request...")
+        nlp = _get_nlp_processor()
+        hw_context = get_hardware_context(profile)
+
+        def callback(msg: str) -> None:
+            console.print_agent_thought("NLP", msg)
+
+        result = nlp.extract(user_input, hw_context, callback)
+        packages, _, preferences = _parse_nlp_result(result)
+
+        if cpu_only:
+            preferences["cpu_only"] = True
+
+        console.print_packages_table(packages, "Suggested Packages")
+
+        # Ask for environment name and path
+        default_path = str(Path.home() / "Documents" / "envs")
+        env_path = (
+            path or input(f"\nPath [default: {default_path}]: ").strip() or default_path
+        )
+        env_name = name or input("Name: ").strip() or f"env_{int(time.time())}"
+
+        # Resolve and install
+        _resolve_and_install(
+            packages=packages,
+            env_path=env_path,
+            env_name=env_name,
+            package_manager=env_type,
+            preferences=preferences,
+            profile=profile,
+            console=console,
+        )
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+@cli.command()
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def doctor(verbose: bool) -> None:
+    """Show system hardware profile."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Doctor", "System hardware profile")
+
+    profiler = _get_profiler()
+
+    try:
+        console.print_info("Profiling system...")
+        with console.spinner("Detecting hardware..."):
+            profile = profiler.profile()
+
+        console.print_hardware_profile(profile)
+
+        # Check package managers
+        console.print_info("Package managers:")
+        managers = detect_package_managers()
+        for pm, ok in managers.items():
+            status = "[green]available[/green]" if ok else "[red]not found[/red]"
+            console._safe_print(f"  - {pm}: {status}")
+
+        # Check LLM configuration
+        console.print_info("LLM configuration:")
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            console._safe_print("  - API Key: [green]configured[/green]")
+        else:
+            console._safe_print("  - API Key: [red]not set[/red]")
+
+        model = os.getenv("ENVIO_LLM_MODEL", "gpt-4o-mini")
+        console._safe_print(f"  - Model: {model}")
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
 
 
 @cli.command()
 @click.argument("packages", nargs=-1, required=True)
-@click.option(
-    "--env-type", "-e", "env_type", default="uv", help="Package manager (pip/conda/uv)"
-)
+@click.option("--env-type", "-e", "env_type", default="uv", help="Package manager")
 @click.option("--name", "-n", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Environment path")
-@click.option("--cpu-only", is_flag=True, help="Force CPU-only mode (ignore GPU)")
+@click.option("--cpu-only", is_flag=True, help="Force CPU-only mode")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def install(
     packages: tuple[str, ...],
@@ -383,21 +534,39 @@ def install(
     cpu_only: bool,
     verbose: bool,
 ) -> None:
-    """Install packages directly (non-interactive mode)."""
-    console = ConsoleUI(verbose=verbose)
-    console.print_header("Envio - Direct Install")
+    """Install packages directly."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Install", "Direct package installation")
 
-    if env_type not in VALID_PACKAGE_MANAGERS:
-        console.print_warning(f"Invalid package manager: {env_type}. Using uv.")
-        env_type = "uv"
+    profiler = _get_profiler()
+    profile = profiler.profile()
 
-    pkg_list = list(packages)
-    preferences = {"cpu_only": cpu_only} if cpu_only else {}
+    try:
+        if env_type not in VALID_PACKAGE_MANAGERS:
+            console.print_warning(f"Invalid: {env_type}. Using uv.")
+            env_type = "uv"
 
-    env_name = name or f"env_setup_{int(time.time())}"
-    env_path = path or str(Path.home() / "Documents" / "envs")
+        pkg_list = list(packages)
+        preferences = {"cpu_only": cpu_only} if cpu_only else {}
 
-    setup_environment(pkg_list, env_path, env_name, env_type, preferences, verbose)
+        env_name = name or f"env_{int(time.time())}"
+        env_path = path or str(Path.home() / "Documents" / "envs")
+
+        _resolve_and_install(
+            packages=pkg_list,
+            env_path=env_path,
+            env_name=env_name,
+            package_manager=env_type,
+            preferences=preferences,
+            profile=profile,
+            console=console,
+        )
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
 
 
 def main() -> None:
