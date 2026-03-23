@@ -150,15 +150,13 @@ pip install {packages_str}
 # To activate the conda environment, run:
 # conda activate {env_name}
 """
-            install_block = "\n".join(f"    conda install -y {pkg}" for pkg in packages)
+            install_block = "\n".join(
+                f"    conda run -n {env_name} pip install {pkg}" for pkg in packages
+            )
             env_setup = f"""
     # Create conda environment
     Write-Host "Creating conda environment: {env_name}..."
     conda create -y -n {env_name} python=3.11
-
-    # Activate conda environment
-    Write-Host "Activating conda environment..."
-    conda activate {env_name}
 """
             install_note = "# Using conda for installation"
         else:
@@ -307,12 +305,10 @@ pip install {packages_str}
 # Create conda environment
 echo "Creating conda environment: {env_name}..."
 conda create -y -n {env_name} python=3.11
-
-# Activate conda environment
-echo "Activating conda environment..."
-conda activate {env_name}
 """
-            install_lines = "\n".join(f"conda install -y {pkg}" for pkg in packages)
+            install_lines = "\n".join(
+                f"conda run -n {env_name} pip install {pkg}" for pkg in packages
+            )
             install_note = "# Using conda for installation"
         else:
             activation = self.generate_venv_activation_instructions(Path(venv_path))
