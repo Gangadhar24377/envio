@@ -139,24 +139,48 @@ pip install {packages_str}
         """Generate complete PowerShell setup script.
 
         Args:
-            venv_path: Full path to the virtual environment (e.g., "envs/forecasting")
+            venv_path: Full path to the virtual environment
             packages: List of packages to install
             package_manager: pip, conda, or uv
         """
-        activation = self.generate_venv_activation_instructions(Path(venv_path))
+        env_name = Path(venv_path).name
 
-        if package_manager == "uv":
-            install_block = "\n".join(
-                f'    uv pip install --python "{venv_path}\\Scripts\\python.exe" {pkg}'
-                for pkg in packages
-            )
-            install_note = "# Using uv for fast installation"
-        elif package_manager == "conda":
+        if package_manager == "conda":
+            activation = f"""
+# To activate the conda environment, run:
+# conda activate {env_name}
+"""
             install_block = "\n".join(f"    conda install -y {pkg}" for pkg in packages)
+            env_setup = f"""
+    # Create conda environment
+    Write-Host "Creating conda environment: {env_name}..."
+    conda create -y -n {env_name} python=3.11
+
+    # Activate conda environment
+    Write-Host "Activating conda environment..."
+    conda activate {env_name}
+"""
             install_note = "# Using conda for installation"
         else:
-            install_block = "\n".join(f"    pip install {pkg}" for pkg in packages)
-            install_note = "# Using pip for installation"
+            activation = self.generate_venv_activation_instructions(Path(venv_path))
+            env_setup = f"""
+    # Create virtual environment
+    Write-Host "Creating virtual environment..."
+    python -m venv "{venv_path}"
+
+    # Activate virtual environment
+    Write-Host "Activating virtual environment..."
+    & "{venv_path}\\Scripts\\Activate.ps1"
+"""
+            if package_manager == "uv":
+                install_block = "\n".join(
+                    f'    uv pip install --python "{venv_path}\\Scripts\\python.exe" {pkg}'
+                    for pkg in packages
+                )
+                install_note = "# Using uv for fast installation"
+            else:
+                install_block = "\n".join(f"    pip install {pkg}" for pkg in packages)
+                install_note = "# Using pip for installation"
 
         return f"""# Envio Environment Setup Script (PowerShell)
 # Generated on: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
@@ -171,17 +195,9 @@ $LogFile = "setup_${{Timestamp}}.log"
 Start-Transcript -Path $LogFile
 
 Write-Host "Starting environment setup..." -ForegroundColor Cyan
-Write-Host "Virtual environment: {venv_path}" -ForegroundColor Cyan
 
 try {{
-    # Create virtual environment
-    Write-Host "Creating virtual environment..."
-    python -m venv "{venv_path}"
-
-    # Activate virtual environment
-    Write-Host "Activating virtual environment..."
-    & "{venv_path}\\Scripts\\Activate.ps1"
-
+{env_setup}
 {install_note}
     Write-Host "Installing packages..."
 {install_block}
@@ -280,20 +296,45 @@ pip install {packages_str}
             packages: List of packages to install
             package_manager: pip, conda, or uv
         """
-        if package_manager == "uv":
-            install_lines = "\n".join(
-                f"uv pip install --python {venv_path}/bin/python {pkg}"
-                for pkg in packages
-            )
-            install_note = "# Using uv for fast installation"
-        elif package_manager == "conda":
+        env_name = Path(venv_path).name
+
+        if package_manager == "conda":
+            activation = f"""
+# To activate the conda environment, run:
+# conda activate {env_name}
+"""
+            env_setup = f"""
+# Create conda environment
+echo "Creating conda environment: {env_name}..."
+conda create -y -n {env_name} python=3.11
+
+# Activate conda environment
+echo "Activating conda environment..."
+conda activate {env_name}
+"""
             install_lines = "\n".join(f"conda install -y {pkg}" for pkg in packages)
             install_note = "# Using conda for installation"
         else:
-            install_lines = "\n".join(f"pip install {pkg}" for pkg in packages)
-            install_note = "# Using pip for installation"
+            activation = self.generate_venv_activation_instructions(Path(venv_path))
+            path_str = venv_path.replace("\\", "/")
+            env_setup = f"""
+# Create virtual environment
+echo "Creating virtual environment..."
+python3 -m venv "{path_str}"
 
-        activation = self.generate_venv_activation_instructions(Path(venv_path))
+# Activate virtual environment
+echo "Activating virtual environment..."
+source "{path_str}/bin/activate"
+"""
+            if package_manager == "uv":
+                install_lines = "\n".join(
+                    f"uv pip install --python {venv_path}/bin/python {pkg}"
+                    for pkg in packages
+                )
+                install_note = "# Using uv for fast installation"
+            else:
+                install_lines = "\n".join(f"pip install {pkg}" for pkg in packages)
+                install_note = "# Using pip for installation"
 
         return f"""#!/bin/bash
 # Envio Environment Setup Script (Bash)
@@ -308,16 +349,7 @@ LOG_FILE="setup_${{TIMESTAMP}}.log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "Starting environment setup..."
-echo "Virtual environment: {venv_path}"
-
-# Create virtual environment
-echo "Creating virtual environment..."
-python3 -m venv "{venv_path}"
-
-# Activate virtual environment
-echo "Activating virtual environment..."
-source "{venv_path}/bin/activate"
-
+{env_setup}
 {install_note}
 echo "Installing packages..."
 {install_lines}

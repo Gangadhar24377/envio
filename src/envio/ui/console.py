@@ -287,6 +287,8 @@ class ConsoleUI:
                 pref_parts.append("[yellow]CPU-only mode[/yellow]")
             elif preferences.get("gpu_optimized"):
                 pref_parts.append("[green]GPU-optimized[/green]")
+            if preferences.get("optimize_for"):
+                pref_parts.append(f"[cyan]{preferences['optimize_for']}[/cyan]")
             if pref_parts:
                 plan_parts.append(f"[bold]Mode:[/bold] {', '.join(pref_parts)}")
 

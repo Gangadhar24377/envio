@@ -145,24 +145,13 @@ class SystemProfiler:
         return GPUInfo(available=False)
 
     def _detect_ram(self) -> int | None:
-        """Detect total RAM in GB using nvidia-smi as fallback."""
-        # Skip ctypes detection due to segfault issues on Windows
-        # Try nvidia-smi for GPU memory as indicator
+        """Detect total RAM in GB using psutil."""
         try:
-            result = subprocess.run(
-                [
-                    "nvidia-smi",
-                    "--query-gpu=memory.total",
-                    "--format=csv,noheader,nounits",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                vram_mb = int(result.stdout.strip().split()[0])
-                # Estimate system RAM as at least 2x VRAM for ML setups
-                return max(vram_mb // 1024 * 2, 8)
+            import psutil
+
+            return int(psutil.virtual_memory().total / (1024**3))
+        except ImportError:
+            pass
         except Exception:
             pass
         return None
