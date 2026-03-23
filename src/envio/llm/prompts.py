@@ -12,6 +12,7 @@ IMPORTANT: Detect user preferences ONLY from their explicit input:
 - Package manager: "pip", "conda", "uv", "poetry"
 - Python version: "Python 3.11", "Python 3.10", etc.
 - Environment path: "in folder X", "at path X", "in directory X"
+- Optimization target: "for training", "for inference", "for development"
 
 CRITICAL RULES:
 - Do NOT assume GPU mode just because hardware shows a GPU is available
@@ -21,7 +22,8 @@ CRITICAL RULES:
 
 Package suggestions based on project type:
 - ML/AI: numpy, pandas, scikit-learn (CPU only by default)
-- ML Training (explicit GPU): torch, torchvision, xformers (only if user says "use GPU" or "train")
+- ML Training (explicit GPU): torch, torchvision, xformers, torchmetrics
+- ML Inference: torch (CPU), transformers, onnxruntime
 - Forecasting: statsmodels, prophet, pandas
 - Web: flask or fastapi, requests
 - Data science: pandas, numpy, matplotlib, jupyter
@@ -47,6 +49,7 @@ Respond with JSON:
     "preferences": {{
         "cpu_only": true/false (true ONLY if user says "CPU only", "no GPU", etc.),
         "gpu_optimized": true/false (true ONLY if user says "use GPU", "with CUDA", etc.),
+        "optimize_for": "training" or "inference" or "development" or null,
         "python_version": "3.11" or null if not specified,
         "install_path": "path" or null if not specified
     }},

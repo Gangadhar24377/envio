@@ -17,6 +17,7 @@ python-dotenv>=1.0.0
 # Utilities
 tqdm>=4.66.0
 tenacity>=8.5.0
+psutil>=5.9.0
 
 # Package Management
 uv

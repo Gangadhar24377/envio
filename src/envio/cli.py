@@ -211,7 +211,7 @@ def _parse_requirements_txt(filepath: Path, filename: str) -> dict:
     return {
         "source": filename,
         "packages": packages,
-        "env_type": "pip",
+        "env_type": None,
     }
 
 
@@ -390,8 +390,8 @@ def init(env_type: str | None, verbose: bool) -> None:
         env_name = input("\nEnvironment name [default: .venv]: ").strip() or ".venv"
         env_path = str(directory)
 
-        # Use user-specified env_type or detected type
-        final_env_type = env_type if env_type else detected["env_type"]
+        # Use user-specified env_type, detected type, or default to uv
+        final_env_type = env_type or detected.get("env_type") or "uv"
         console.print_info(f"Package manager: {final_env_type}")
 
         # Setup environment
@@ -417,6 +417,13 @@ def init(env_type: str | None, verbose: bool) -> None:
 @click.option("--path", "-p", default=None, help="Environment path")
 @click.option("--env-type", "-e", "env_type", default="uv", help="Package manager")
 @click.option("--cpu-only", is_flag=True, help="Force CPU-only mode")
+@click.option(
+    "--optimize-for",
+    "optimize_for",
+    default=None,
+    type=click.Choice(["training", "inference", "development"]),
+    help="Optimize packages for specific use case",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def prompt(
     prompt_text: tuple[str, ...],
@@ -424,6 +431,7 @@ def prompt(
     path: str | None,
     env_type: str,
     cpu_only: bool,
+    optimize_for: str | None,
     verbose: bool,
 ) -> None:
     """Set up environment from natural language prompt."""
@@ -451,6 +459,9 @@ def prompt(
 
         if cpu_only:
             preferences["cpu_only"] = True
+        if optimize_for:
+            preferences["optimize_for"] = optimize_for
+            console.print_info(f"Optimizing for: {optimize_for}")
 
         console.print_packages_table(packages, "Suggested Packages")
 
@@ -525,6 +536,13 @@ def doctor(verbose: bool) -> None:
 @click.option("--name", "-n", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Environment path")
 @click.option("--cpu-only", is_flag=True, help="Force CPU-only mode")
+@click.option(
+    "--optimize-for",
+    "optimize_for",
+    default=None,
+    type=click.Choice(["training", "inference", "development"]),
+    help="Optimize packages for specific use case",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def install(
     packages: tuple[str, ...],
@@ -532,6 +550,7 @@ def install(
     name: str | None,
     path: str | None,
     cpu_only: bool,
+    optimize_for: str | None,
     verbose: bool,
 ) -> None:
     """Install packages directly."""
@@ -548,7 +567,12 @@ def install(
             env_type = "uv"
 
         pkg_list = list(packages)
-        preferences = {"cpu_only": cpu_only} if cpu_only else {}
+        preferences = {}
+        if cpu_only:
+            preferences["cpu_only"] = True
+        if optimize_for:
+            preferences["optimize_for"] = optimize_for
+            console.print_info(f"Optimizing for: {optimize_for}")
 
         env_name = name or f"env_{int(time.time())}"
         env_path = path or str(Path.home() / "Documents" / "envs")
