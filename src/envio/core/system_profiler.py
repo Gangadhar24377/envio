@@ -79,8 +79,19 @@ class SystemProfile:
 class SystemProfiler:
     """Profiler for detecting system information."""
 
+    _instance: "SystemProfiler | None" = None
+    _profile: SystemProfile | None = None
+
+    def __new__(cls) -> "SystemProfiler":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self) -> None:
-        self._profile: SystemProfile | None = None
+        # Prevent re-initialization if already initialized
+        if not hasattr(self, "_initialized"):
+            self._profile: SystemProfile | None = None
+            self._initialized = True
 
     def detect_os(self) -> OSType:
         """Detect the operating system type."""

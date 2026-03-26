@@ -212,6 +212,48 @@ class VirtualEnvManager:
 
         except Exception:
             return False, []
+    def list_envs(self, base_path: Path | None = None) -> list[dict[str, str]]:
+        """List all virtual environments in a directory.
+
+        Args:
+            base_path: Directory to search for environments. Defaults to ~/Documents/envs/
+
+        Returns:
+            List of dicts with 'name', 'path', and 'python_version' keys
+        """
+        if base_path is None:
+            base_path = Path.home() / "Documents" / "envs"
+
+        if not base_path.exists():
+            return []
+
+        environments = []
+        for item in base_path.iterdir():
+            if item.is_dir() and self.exists(item):
+                # Try to get Python version
+                python_path = self.get_python_path(item)
+                try:
+                    result = subprocess.run(
+                        [str(python_path), "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    python_version = (
+                        result.stdout.strip() if result.returncode == 0 else "unknown"
+                    )
+                except Exception:
+                    python_version = "unknown"
+
+                environments.append(
+                    {
+                        "name": item.name,
+                        "path": str(item),
+                        "python_version": python_version,
+                    }
+                )
+
+        return environments
 
     def uninstall_packages(
         self,
@@ -238,6 +280,11 @@ class VirtualEnvManager:
                 "-y",
             ] + packages
 
+        if not python_path.exists():
+            return False, "", f"Python not found at {python_path}"
+
+        try:
+            cmd = [str(python_path), "-m", "pip", "uninstall", "-y"] + packages
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -247,5 +294,13 @@ class VirtualEnvManager:
 
             return result.returncode == 0, result.stdout, result.stderr
 
+            return (
+                result.returncode == 0,
+                result.stdout,
+                result.stderr,
+            )
+
+        except subprocess.TimeoutExpired:
+            return False, "", "Uninstallation timed out"
         except Exception as e:
             return False, "", str(e)
