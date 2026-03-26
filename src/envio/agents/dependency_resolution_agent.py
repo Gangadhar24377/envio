@@ -17,6 +17,7 @@ from envio.resolution.fast_resolver import (
     ResolutionStatus,
 )
 from envio.resolution.self_healing import SelfHealingLoop
+from envio.tools.serper_search import SerperSearchTool
 
 if TYPE_CHECKING:
     from envio.core.system_profiler import SystemProfile
@@ -30,6 +31,7 @@ class DependencyResolver:
         self._parser = ResponseParser()
         self._fast_resolver = FastResolver()
         self._healing_loop = SelfHealingLoop()
+        self._search_tool = SerperSearchTool()
 
     def resolve(
         self,
@@ -239,7 +241,7 @@ class DependencyResolver:
         """Handle package not found with web search."""
         search_results = {}
         for pkg in packages:
-            search_results[pkg] = self._search_web(pkg)
+            search_results[pkg] = self._search_tool.run(f"{pkg} python package")
 
         prompt = DEP_NOT_FOUND_PROMPT.format(
             search_results=search_results,
@@ -279,28 +281,5 @@ class DependencyResolver:
         }
 
     def _search_web(self, query: str) -> str:
-        """Search web for package information."""
-        import os
-
-        import requests
-
-        api_key = os.getenv("SERPER_API_KEY")
-        if not api_key:
-            return "Search not available (no API key)"
-
-        try:
-            response = requests.post(
-                "https://google.serper.dev/search",
-                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
-                json={"q": f"{query} python package"},
-                timeout=10,
-            )
-            if response.status_code == 200:
-                data = response.json()
-                results = data.get("organic", [])
-                if results:
-                    first = results[0]
-                    return f"{first.get('title', '')}: {first.get('snippet', '')}"
-            return "No results found"
-        except Exception:
-            return "Search failed"
+        """Search web for package information using SerperSearchTool."""
+        return self._search_tool.run(f"{query} python package")
