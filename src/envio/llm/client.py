@@ -9,12 +9,17 @@ from typing import Any
 
 import litellm
 
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_OLLAMA_MODEL = "llama3"
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+
 
 @dataclass
 class LLMConfig:
     """Configuration for LLM client."""
 
-    model: str = "gpt-4o-mini"
+    provider: str
+    model: str
     api_key: str | None = None
     api_base: str | None = None
     temperature: float = 0.0
@@ -23,14 +28,80 @@ class LLMConfig:
 
     @classmethod
     def from_env(cls) -> LLMConfig:
-        """Create config from environment variables."""
-        return cls(
-            model=os.getenv("ENVIO_LLM_MODEL", "gpt-4o-mini"),
-            api_key=os.getenv("ENVIO_LLM_API_KEY") or os.getenv("OPENAI_API_KEY"),
-            api_base=os.getenv("ENVIO_LLM_API_BASE"),
-            temperature=float(os.getenv("ENVIO_LLM_TEMPERATURE", "0")),
-            max_tokens=int(os.getenv("ENVIO_LLM_MAX_TOKENS", "4096")),
+        """Create config from environment variables with auto-detection."""
+        openai_key = os.getenv("OPENAI_API_KEY")
+        custom_api_key = os.getenv("ENVIO_LLM_API_KEY")
+        env_model = os.getenv("ENVIO_LLM_MODEL", "").strip()
+        ollama_host = os.getenv("ENVIO_OLLAMA_HOST", DEFAULT_OLLAMA_HOST)
+
+        ollama_available, available_models = _check_ollama(ollama_host)
+
+        if openai_key or custom_api_key:
+            provider = "openai"
+            model = env_model if env_model else DEFAULT_OPENAI_MODEL
+            return cls(
+                provider=provider,
+                model=model,
+                api_key=custom_api_key or openai_key,
+                api_base=os.getenv("ENVIO_LLM_API_BASE"),
+                temperature=float(os.getenv("ENVIO_LLM_TEMPERATURE", "0")),
+                max_tokens=int(os.getenv("ENVIO_LLM_MAX_TOKENS", "4096")),
+            )
+
+        if ollama_available:
+            provider = "ollama"
+            if env_model:
+                model = env_model
+            elif available_models:
+                model = (
+                    DEFAULT_OLLAMA_MODEL
+                    if DEFAULT_OLLAMA_MODEL in available_models
+                    else available_models[0]
+                )
+            else:
+                raise ValueError(
+                    "Ollama is running but no models found. "
+                    "Please pull a model: ollama pull <model_name>"
+                )
+            return cls(
+                provider=provider,
+                model=model,
+                api_base=ollama_host,
+                temperature=float(os.getenv("ENVIO_LLM_TEMPERATURE", "0")),
+                max_tokens=int(os.getenv("ENVIO_LLM_MAX_TOKENS", "4096")),
+            )
+
+        raise ValueError(
+            f"No LLM provider available. Please set one of:\n"
+            f"  - OPENAI_API_KEY in .env (recommended: {DEFAULT_OPENAI_MODEL})\n"
+            f"  - Or ensure Ollama is running with a model pulled"
         )
+
+
+def _check_ollama(host: str) -> tuple[bool, list[str]]:
+    """Check if Ollama is running and list available models."""
+    try:
+        import requests
+
+        response = requests.get(f"{host}/api/tags", timeout=3)
+        if response.status_code == 200:
+            models = response.json().get("models", [])
+            return True, [m["name"] for m in models]
+    except Exception:
+        pass
+    return False, []
+
+
+def list_ollama_models(host: str = DEFAULT_OLLAMA_HOST) -> list[str]:
+    """List available Ollama models."""
+    _, models = _check_ollama(host)
+    return models
+
+
+def is_ollama_available(host: str = DEFAULT_OLLAMA_HOST) -> bool:
+    """Check if Ollama is running."""
+    available, _ = _check_ollama(host)
+    return available
 
 
 @dataclass
@@ -56,6 +127,12 @@ class LLMClient:
     def __init__(self, config: LLMConfig | None = None) -> None:
         self.config = config or LLMConfig.from_env()
         litellm.suppress_debug_info = True
+        self._setup_provider()
+
+    def _setup_provider(self) -> None:
+        """Configure the model for the detected provider."""
+        if self.config.provider == "ollama":
+            self.config.model = f"ollama/{self.config.model}"
 
     def chat(
         self,
