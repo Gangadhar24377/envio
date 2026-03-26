@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import time
 import traceback
 from pathlib import Path
@@ -11,6 +12,10 @@ from pathlib import Path
 import click
 
 VALID_PACKAGE_MANAGERS = ["pip", "conda", "uv"]
+
+
+from . import __version__
+from .agents.command_construction_agent import CommandGenerator
 
 
 def _load_dotenv() -> None:
@@ -98,6 +103,65 @@ def _get_response_parser():
     return ResponseParser()
 
 
+# Security: Package version blocklist
+BLOCKED_PACKAGES = {
+    "litellm": {
+        "max_version": "1.82.6",
+        "reason": "Versions 1.82.7+ contain malicious code that steals API keys",
+    },
+}
+
+
+def _validate_packages(packages: list[str], console) -> list[str]:
+    """Validate packages and block infected versions.
+
+    Args:
+        packages: List of package specifications
+        console: Console UI for error messages
+
+    Returns:
+        Validated package list
+
+    Raises:
+        SystemExit: If infected version detected
+    """
+    from packaging.version import Version
+
+    validated = []
+    for pkg in packages:
+        pkg_lower = pkg.lower()
+
+        for blocked_pkg, info in BLOCKED_PACKAGES.items():
+            if pkg_lower.startswith(blocked_pkg):
+                if "==" in pkg_lower:
+                    version = pkg_lower.split("==")[1].strip()
+                    if Version(version) > Version(info["max_version"]):
+                        console.print_error(f"BLOCKED: {pkg} is INFECTED!")
+                        console.print_error(f"Reason: {info['reason']}")
+                        console.print_warning(
+                            f"Maximum safe version: {blocked_pkg}=={info['max_version']}"
+                        )
+                        console.print_info(
+                            f"To install safely, use: envio install {blocked_pkg}=={info['max_version']}"
+                        )
+                        raise SystemExit(1)
+                elif ">=" in pkg_lower:
+                    version = pkg_lower.split(">=")[1].strip()
+                    if Version(version) > Version(info["max_version"]):
+                        console.print_error(
+                            f"BLOCKED: {pkg} could install infected version!"
+                        )
+                        console.print_error(f"Reason: {info['reason']}")
+                        console.print_warning(
+                            f"Maximum safe version: {blocked_pkg}=={info['max_version']}"
+                        )
+                        raise SystemExit(1)
+
+        validated.append(pkg)
+
+    return validated
+
+
 def _resolve_and_install(
     packages: list[str],
     env_path: str,
@@ -106,8 +170,48 @@ def _resolve_and_install(
     preferences: dict | None,
     profile,
     console,
+    original_command: str = "envio install",
 ) -> bool:
     """Resolve dependencies and install environment with self-healing."""
+    # Edge case: Handle empty package list
+    if not packages:
+        console.print_error(
+            "No packages specified. Please provide at least one package."
+        )
+        return False
+
+    # Edge case: Parse package extras syntax (pkg[extra1,extra2])
+    parsed_packages = []
+    for pkg in packages:
+        # Validate package name format
+        if "[" in pkg and "]" in pkg:
+            # Has extras - validate base name
+            base_name = pkg.split("[")[0]
+            extras = pkg.split("[")[1].split("]")[0]
+            if not base_name:
+                console.print_error(f"Invalid package format: {pkg}")
+                return False
+            parsed_packages.append(pkg)
+        else:
+            parsed_packages.append(pkg)
+    packages = parsed_packages
+
+    # Validate packages for security (block infected versions)
+    packages = _validate_packages(packages, console)
+
+    # Edge case: Check if venv already exists
+    from envio.core.virtualenv_manager import VirtualEnvManager
+
+    venv_manager = VirtualEnvManager()
+    venv_path_obj = Path(env_path) / env_name
+
+    if venv_manager.exists(venv_path_obj):
+        console.print_warning(f"Virtual environment already exists at: {venv_path_obj}")
+        overwrite = input("Overwrite? (y/N): ").strip().lower()
+        if overwrite != "y":
+            console.print_info("Aborted.")
+            return False
+
     resolver = _get_dependency_resolver()
     executor = _get_executor()
     script_gen = _get_script_generator()
@@ -131,6 +235,27 @@ def _resolve_and_install(
         console.print_info("Resolving dependencies...")
         resolved = resolver.resolve(packages, package_manager, profile, preferences)
         final_packages = resolved.get("packages", packages)
+
+        # Check if we should use CommandGenerator for optimized commands
+        if preferences and preferences.get("optimize_for"):
+            console.print_info("Generating optimized installation commands...")
+            command_gen = CommandGenerator()
+            commands_result = command_gen.generate(
+                packages=final_packages,
+                env_type=package_manager,
+                hardware_profile=profile,
+                preferences=preferences,
+            )
+
+            # If command generation succeeded and we have commands, use them
+            if commands_result.get("commands") and len(commands_result["commands"]) > 0:
+                # Store the optimized commands for use in script generation
+                optimized_commands = commands_result["commands"]
+            else:
+                # Fall back to default behavior if command generation failed
+                optimized_commands = None
+        else:
+            optimized_commands = None
 
         if resolved.get("status") in ("conflict", "error"):
             console.print_resolution_status(
@@ -164,6 +289,21 @@ def _resolve_and_install(
 
         if returncode == 0:
             console.print_success("Environment setup completed!")
+
+            # Register environment in ~/.envio/environments.json
+            import platform as _platform
+            from envio.core.registry import EnvironmentRegistry
+
+            registry = EnvironmentRegistry()
+            registry.register(
+                name=env_name,
+                path=str(venv_path),
+                packages=final_packages,
+                command=original_command,
+                package_manager=package_manager,
+                python_version=_platform.python_version(),
+            )
+
             activation_cmd = script_gen.generate_venv_activation_instructions(venv_path)
             console.print_info("To activate the environment:")
             console.print_code_block(activation_cmd.strip(), "bash")
@@ -315,7 +455,7 @@ def _parse_environment_yml(filepath: Path, filename: str) -> dict:
 
 
 @click.group()
-@click.version_option(version="0.1.0")
+@click.version_option(version=__version__)
 def cli() -> None:
     """Envio - AI-Native Environment Orchestrator."""
     pass
@@ -373,32 +513,9 @@ def init(env_type: str | None, verbose: bool) -> None:
                     pass
 
             # Filter out standard library
-            stdlib = {
-                "os",
-                "sys",
-                "re",
-                "json",
-                "time",
-                "datetime",
-                "pathlib",
-                "collections",
-                "itertools",
-                "functools",
-                "typing",
-                "abc",
-                "io",
-                "logging",
-                "unittest",
-                "argparse",
-                "shutil",
-                "glob",
-                "pickle",
-                "copy",
-                "math",
-                "random",
-                "string",
-                "textwrap",
-            }
+            import sys
+
+            stdlib = set(sys.stdlib_module_names)
             third_party = sorted(imports - stdlib)
 
             if third_party:
@@ -433,6 +550,7 @@ def init(env_type: str | None, verbose: bool) -> None:
             preferences={},
             profile=profile,
             console=console,
+            original_command="envio init",
         )
 
     except Exception as e:
@@ -468,6 +586,14 @@ def prompt(
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Prompt", "Natural language environment setup")
+
+    # Edge case: Check for API key
+    api_key = os.getenv("ENVIO_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        console.print_warning("No API key found. Falling back to PyPI-only resolution.")
+        console.print_info(
+            "Set ENVIO_LLM_API_KEY or OPENAI_API_KEY for AI-powered features."
+        )
 
     profiler = _get_profiler()
     profile = profiler.profile()
@@ -511,6 +637,7 @@ def prompt(
             preferences=preferences,
             profile=profile,
             console=console,
+            original_command=f"envio prompt '{user_input}'",
         )
 
     except Exception as e:
@@ -607,6 +734,15 @@ def install(
         env_name = name or f"env_{int(time.time())}"
         env_path = path or str(Path.home() / "Documents" / "envs")
 
+        # Build the command string for registry
+        cmd_parts = ["envio install"] + list(pkg_list)
+        if env_type != "uv":
+            cmd_parts.append(f"--env-type {env_type}")
+        if cpu_only:
+            cmd_parts.append("--cpu-only")
+        if optimize_for:
+            cmd_parts.append(f"--optimize-for {optimize_for}")
+
         _resolve_and_install(
             packages=pkg_list,
             env_path=env_path,
@@ -615,7 +751,206 @@ def install(
             preferences=preferences,
             profile=profile,
             console=console,
+            original_command=" ".join(cmd_parts),
         )
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+@cli.command()
+@click.argument("source")
+@click.option("--name", "-n", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Installation path")
+@click.option("--env-type", "-e", "env_type", default="uv", help="Package manager")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def resurrect(
+    source: str,
+    name: str | None,
+    path: str | None,
+    env_type: str,
+    verbose: bool,
+) -> None:
+    """Resurrect dead repositories by analyzing imports and generating requirements."""
+    from envio.commands.resurrect import resurrect_command
+
+    resurrect_command(source, name, path, env_type, verbose)
+
+
+@cli.command("list")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def list_envs(verbose: bool) -> None:
+    """List environments created by envio."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio List", "Environments created by envio")
+
+    try:
+        from rich.table import Table
+
+        from envio.core.registry import EnvironmentRegistry
+
+        registry = EnvironmentRegistry()
+        environments = registry.list_all()
+
+        if not environments:
+            console.print_info("No environments created by envio yet.")
+            console.print_info("Try: envio prompt 'web app with flask'")
+            return
+
+        table = Table(title="Registered Environments", show_lines=True)
+        table.add_column("Name", style="cyan", no_wrap=True)
+        table.add_column("Path", style="white")
+        table.add_column("Pkgs", justify="right", style="green")
+        table.add_column("Manager", style="yellow")
+        table.add_column("Created", style="dim")
+
+        for env in environments:
+            # Check if the path still exists
+            env_exists = Path(env["path"]).exists()
+            name = env["name"] if env_exists else f"{env['name']} (missing)"
+            name_style = "cyan" if env_exists else "red"
+
+            created = env.get("created_at", "")
+            if created:
+                # Parse ISO format and show just the date
+                try:
+                    from datetime import datetime as _dt
+
+                    dt = _dt.fromisoformat(created)
+                    created = dt.strftime("%b %d %H:%M")
+                except Exception:
+                    pass
+
+            pkg_count = len(env.get("packages", []))
+
+            table.add_row(
+                f"[{name_style}]{name}[/]",
+                env["path"],
+                str(pkg_count),
+                env.get("package_manager", "uv"),
+                created,
+            )
+
+        console._safe_print(table)
+
+        # Show recreation commands
+        console.print_info("")
+        for env in environments:
+            if env.get("command") and Path(env["path"]).exists():
+                console.print_info(f"  [dim]{env['name']}:[/] {env['command']}")
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+@cli.command()
+@click.argument("packages", nargs=-1, required=True)
+@click.option("--env", "-e", "env_name", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Environment path")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def remove(
+    packages: tuple[str, ...],
+    env_name: str | None,
+    path: str | None,
+    verbose: bool,
+) -> None:
+    """Remove packages from a virtual environment."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Remove", "Remove packages from environment")
+
+    try:
+        from envio.core.virtualenv_manager import VirtualEnvManager
+
+        manager = VirtualEnvManager()
+
+        # Find the environment
+        env_path = Path(path) if path else None
+        if not env_path:
+            # Search in default location
+            default_base = Path.home() / "Documents" / "envs"
+            if env_name:
+                env_path = default_base / env_name
+            else:
+                # Search current directory
+                env_path = Path.cwd() / ".venv"
+
+        if not manager.exists(env_path):
+            console.print_error(f"Virtual environment not found at: {env_path}")
+            return
+
+        # Show what we're going to remove
+        console.print_info(f"Removing packages from: {env_path}")
+        console.print_packages_table(list(packages), "Packages to remove")
+
+        # Remove packages
+        success, stdout, stderr = manager.uninstall_packages(env_path, list(packages))
+
+        if success:
+            console.print_success("Packages removed successfully!")
+            if stdout:
+                console.print_code_block(stdout, "bash")
+        else:
+            console.print_error("Failed to remove packages")
+            console.print_code_block(stderr or stdout, "bash")
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+@cli.command()
+@click.option("--env", "-e", "env_name", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Environment path")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def activate(
+    env_name: str | None,
+    path: str | None,
+    verbose: bool,
+) -> None:
+    """Show activation command for a virtual environment."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Activate", "Show activation command")
+
+    try:
+        from envio.core.virtualenv_manager import VirtualEnvManager
+
+        manager = VirtualEnvManager()
+
+        # Find the environment
+        env_path = Path(path) if path else None
+        if not env_path:
+            # Search in default location
+            default_base = Path.home() / "Documents" / "envs"
+            if env_name:
+                env_path = default_base / env_name
+            else:
+                # Search current directory
+                env_path = Path.cwd() / ".venv"
+
+        if not manager.exists(env_path):
+            console.print_error(f"Virtual environment not found at: {env_path}")
+            return
+
+        # Get activation command
+        activation_cmd = manager.get_activation_command(env_path)
+        console.print_info("To activate the environment, run:")
+        console.print_code_block(activation_cmd, "bash")
+
+        # Show installed packages
+        success, packages = manager.get_installed_packages(env_path)
+        if success and packages:
+            console.print_info(f"Installed packages ({len(packages)}):")
+            console.print_packages_table(packages[:10], "Installed Packages")
+            if len(packages) > 10:
+                console.print_info(f"... and {len(packages) - 10} more")
 
     except Exception as e:
         console.print_error(f"Error: {e}")

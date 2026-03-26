@@ -1,6 +1,7 @@
 # Envio - Core Dependencies
 # AI/LLM - Multi-provider support via LiteLLM
-litellm>=1.47.0
+# CRITICAL: DO NOT upgrade beyond 1.82.6 - versions 1.82.7+ are infected
+litellm>=1.47.0,<=1.82.6
 
 # HTTP & Networking
 requests>=2.32.0
