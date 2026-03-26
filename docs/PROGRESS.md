@@ -78,6 +78,30 @@ ENVIO_LLM_API_BASE=http://localhost:11434/v1  # optional for Ollama
 - [x] **1.5 Rich Terminal UI (P1)**
 - [x] **1.6 CrewAI → LiteLLM Migration**
 
+### Phase 2: Environment Management - COMPLETE
+
+- [x] **2.1 Environment Registry** - Track all envio-created environments
+- [x] **2.2 Package Import Mapping** - Dynamic cv2→opencv-python resolution
+- [x] **2.3 VirtualEnvManager CLI** - envio list, remove, activate commands
+- [x] **2.4 Shell Injection Protection** - sanitize.py, shlex.quote
+- [x] **2.5 Singleton SystemProfiler** - Cache hardware detection
+- [x] **2.6 Tenacity Retry Logic** - Resilient LLM calls
+
+### Phase 3: Deployment & Security - COMPLETE
+
+- [x] **3.1 Interactive Confirmation** - `--yes/-y` flag, "Proceed? [Y/n]"
+- [x] **3.2 Dry-Run Mode** - `--dry-run` flag for preview
+- [x] **3.3 Lockfile Generation** - `envio lock` for reproducibility
+- [x] **3.4 Multi-Format Export** - `envio export` (requirements/Dockerfile/devcontainer)
+- [x] **3.5 Security Audit** - `envio audit` with pip-audit integration
+
+### Phase 4: Future Features (Growth)
+
+- [ ] 4.1 Ghost-Town Repo Resurrection
+- [x] 4.2 Ollama/Local LLM Support
+- [x] 4.3 Apple Silicon/MPS Detection
+- [ ] 4.4 GitHub Action
+- [ ] 4.5 Semantic Environment Diffing
 ### Phase 2: Code Quality & Stability - COMPLETE
 
 - [x] **2.1 Shell Injection Protection**
@@ -159,6 +183,30 @@ src/envio/
 | `langchain` | Not needed |
 | `langchain-openai` | Replaced by LiteLLM |
 | `prompt_toolkit` | Replaced with simple `input()` |
+
+---
+
+### Phase 3 - Deployment & Security (COMPLETED: Mar 26, 2026)
+
+#### New Commands
+| Command | Purpose |
+|---------|---------|
+| `envio lock` | Generate reproducible lockfiles (JSON/text) |
+| `envio export` | Export to requirements.txt, Dockerfile, devcontainer.json |
+| `envio audit` | Scan for security vulnerabilities with pip-audit |
+
+#### New Options
+| Option | Purpose |
+|--------|---------|
+| `--dry-run` | Preview generated script without executing |
+| `--yes, -y` | Skip confirmation prompt |
+
+#### Implementation Details
+- **Lockfile Generation**: Captures exact package versions with hardware context
+- **Export Formats**: Dockerfile uses multi-stage builds; devcontainer.json includes VS Code extensions
+- **Security Audit**: Integrates pip-audit for CVE scanning with auto-fix capability
+- **Dry-Run Mode**: Writes script to disk but skips execution for review
+- **Interactive Confirmation**: Prompts "Proceed? [Y/n]" before making changes
 
 ---
 

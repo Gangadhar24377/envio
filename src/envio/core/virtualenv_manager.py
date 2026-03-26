@@ -175,6 +175,43 @@ class VirtualEnvManager:
         except Exception:
             return False, []
 
+    def get_installed_packages_with_versions(
+        self,
+        venv_path: Path,
+    ) -> tuple[bool, list[dict[str, str]]]:
+        """Get list of installed packages with versions in the venv.
+
+        Returns:
+            Tuple of (success, list of dicts with 'name' and 'version' keys)
+        """
+        python_path = self.get_python_path(venv_path)
+
+        try:
+            result = subprocess.run(
+                [str(python_path), "-m", "pip", "list", "--format=freeze"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if result.returncode == 0:
+                packages = []
+                for line in result.stdout.strip().split("\n"):
+                    if "==" in line:
+                        parts = line.split("==")
+                        if len(parts) == 2:
+                            packages.append(
+                                {
+                                    "name": parts[0],
+                                    "version": parts[1],
+                                }
+                            )
+                return True, packages
+
+            return False, []
+
+        except Exception:
+            return False, []
     def list_envs(self, base_path: Path | None = None) -> list[dict[str, str]]:
         """List all virtual environments in a directory.
 
