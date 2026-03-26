@@ -95,7 +95,44 @@ envio --model ollama/llama3 doctor
 
 ---
 
-### Feature 3: AI Containerization
+### Feature 3: Dynamic Package Validation & Auto-Fix
+**Priority:** High
+**Effort:** Medium
+**Impact:** Very High
+**Status:** ✅ COMPLETE (March 27, 2026)
+
+**What it does:**
+```bash
+# Automatically fixes deprecated package names and invalid versions
+envio init  # PIL==1.1.6 → pillow==12.1.1
+envio install cv2 pillow  # Maps cv2 → opencv-python
+envio resurrect .  # Scans code and fixes any deprecated imports
+```
+
+**Implementation:**
+1. Added `_normalize_package()` in cli.py - validates versions against PyPI API
+2. Added `_validate_and_normalize_packages()` - processes all packages before resolution
+3. Updated init, prompt, install, and resurrect commands to use validation
+4. Added IMPORT_TO_PYPI mapping for common deprecated names
+5. PyPI API check catches non-existent versions and finds latest automatically
+
+**Files Modified:**
+- `src/envio/cli.py` - Added validation functions
+- `src/envio/commands/resurrect.py` - Added validation before install
+- `src/envio/resolution/fast_resolver.py` - Added PyPI version validation
+
+**Testing:**
+```bash
+# Test with deprecated package
+envio install PIL==1.1.6
+# Output: PIL==1.1.6 → pillow==12.1.1
+
+# Test with non-existent version
+envio install requests==99.99.99
+# Output: requests==99.99.99 → not found, using requests==2.32.3
+```
+
+---
 **Priority:** Medium
 **Effort:** High
 **Impact:** High

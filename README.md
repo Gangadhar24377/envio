@@ -23,6 +23,9 @@ Envio is an AI-powered Python environment manager that combines the speed of `uv
 - **Ollama Support**: Use local LLMs instead of OpenAI API
 - **Apple Silicon MPS**: Automatic detection for M1/M2/M3/M4 Macs
 - **Ghost-Town Resurrection**: Revive old Python projects by scanning code and inferring dependencies
+- **Package Validation**: Automatically validates and fixes deprecated/wrong package names (e.g., PIL→Pillow)
+- **Version Auto-Fix**: Finds correct versions when specified versions don't exist on PyPI
+- **Multi-Location Config**: Works from any directory - finds API keys from project or global config
 
 ## Prerequisites
 
@@ -56,9 +59,9 @@ uv pip install -e .
 pip install -e .
 ```
 
-This creates a `.venv/` folder in the project directory and installs `envio` there.
+This installs `envio` in editable mode and makes the CLI available.
 
-### Step 3: Activate Envio's Virtual Environment
+### Step 3: Activate Envio's Virtual Environment (Optional - for development)
 
 ```bash
 # Windows CMD
@@ -73,12 +76,19 @@ source .venv/bin/activate
 
 You should see `(envio)` at the start of your terminal prompt.
 
+**Note**: You can also run `envio` commands directly without activating the venv by using:
+- `uv run envio <command>` 
+- `python -m envio <command>`
+
 ### Step 4: Create `.env` File
 
-Create a `.env` file in the project root directory with your API key:
+Create a `.env` file in the **envio project root** directory (where you cloned envio) with your API key:
 
 ```bash
-# Create the file
+# Windows
+echo OPENAI_API_KEY=sk-your-openai-api-key-here > .env
+
+# Linux/macOS
 echo "OPENAI_API_KEY=sk-your-openai-api-key-here" > .env
 ```
 
@@ -86,6 +96,8 @@ Or manually create `.env` with this content:
 ```
 OPENAI_API_KEY=sk-your-openai-api-key
 ```
+
+**Important**: The `.env` file should be in the **envio project directory**, not in your project directories. Envio will automatically find it from multiple locations (cwd → project dir → ~/.envio/).
 
 ### Step 5: Verify Installation
 
@@ -96,6 +108,8 @@ envio --help
 # Test system profiling
 envio doctor
 ```
+
+**Note for Ollama users**: If you prefer using local LLMs instead of OpenAI, you can skip the `.env` file and just ensure Ollama is running (`ollama serve`). Envio will auto-detect Ollama and use it.
 
 ---
 
@@ -576,7 +590,13 @@ Example output when healing kicks in:
 ### "envio" Command Not Found
 
 ```bash
-# Make sure you're in the envio directory and venv is activated
+# Run directly without activating the venv
+uv run envio --help
+
+# Or use python -m
+python -m envio --help
+
+# Or activate the venv
 cd envio
 .venv\Scripts\activate.bat  # Windows CMD
 source .venv/bin/activate    # Linux/macOS
@@ -588,13 +608,31 @@ envio --help
 ### API Key Not Found
 
 ```bash
+# Envio looks for .env in this order:
+# 1. Current working directory
+# 2. Envio project directory (where you cloned envio)
+# 3. ~/.envio/ directory
+
 # Check your .env file exists
 cat .env
 
 # Or set manually
 export OPENAI_API_KEY=sk-...  # Linux/macOS
 $env:OPENAI_API_KEY="sk-..."  # Windows PowerShell
+
+# Or create ~/.envio/.env
+mkdir -p ~/.envio
+echo "OPENAI_API_KEY=sk-..." > ~/.envio/.env
 ```
+
+### Package Validation
+
+Envio automatically validates packages against PyPI and fixes:
+- Deprecated package names (PIL → Pillow, cv2 → opencv-python)
+- Non-existent versions (finds latest valid version)
+- Invalid version specifications
+
+If you see warnings about packages being fixed, this is expected behavior.
 
 ### uv Not Found
 

@@ -36,6 +36,9 @@ ENVIO_LLM_API_BASE=http://localhost:11434/v1  # optional for Ollama
 - **TUI Progress**: tqdm progress bars for file scanning operations
 - **Dynamic Stdlib Detection**: Uses `sys.stdlib_module_names` instead of hardcoded lists
 - **Multi-Location .env Loading**: Checks cwd → project dir → ~/.envio/ for API keys
+- **Package Validation**: Auto-validates packages against PyPI before installation
+- **Dynamic Package Fixing**: Maps deprecated import names (PIL→Pillow) and fixes invalid versions
+- **Self-Healing Integration**: All commands now trigger healing when resolution fails
 
 #### CLI Fixes
 - Fixed syntax errors in cli.py (missing try/except blocks from merge conflicts)
