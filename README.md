@@ -11,6 +11,12 @@ Envio is an AI-powered Python environment manager that combines the speed of `uv
 - **Beautiful TUI**: Rich terminal output with timestamps, tables, and progress bars
 - **Optimization Modes**: Optimize for training, inference, or development
 - **Multi-Platform Support**: pip, uv, and conda package managers
+- **Environment Registry**: Tracks all envio-created environments in `~/.envio/environments.json`
+- **Security Audit**: Scan environments for known vulnerabilities with `envio audit`
+- **Reproducible Lockfiles**: Generate lockfiles with `envio lock`
+- **Multiple Export Formats**: Export as requirements.txt, Dockerfile, or devcontainer.json
+- **Dry-Run Mode**: Preview changes before execution with `--dry-run`
+- **Interactive Confirmation**: Optional prompts before making changes
 - **Import Mapping**: Dynamic import-to-package name resolution (e.g., cv2 → opencv-python)
 - **Environment Management**: List, activate, and remove packages from virtual environments
 - **Resilient Error Handling**: Tenacity-based retry logic with graceful fallbacks
@@ -247,7 +253,89 @@ Options:
 - `--path, -p`: Installation path (default: `~/Documents/envs`)
 - `--cpu-only`: Force CPU-only mode (ignore GPU)
 - `--optimize-for`: Optimize for specific use case (training/inference/development)
+- `--dry-run`: Preview the generated script without executing
+- `--yes, -y`: Skip confirmation prompt
 - `--verbose, -v`: Enable verbose output
+
+#### `envio lock`
+Generate a lockfile for reproducible environments.
+
+```bash
+# Generate JSON lockfile for an environment
+envio lock -n my-env
+
+# Generate text format (requirements.txt style)
+envio lock -n my-env --format text
+
+# Custom output path
+envio lock -n my-env -o my-lock.json
+
+# Lock current directory's .venv
+envio lock
+```
+
+Output includes:
+- Package names with exact versions
+- Python version
+- Hardware context (GPU/CUDA if available)
+- Generation timestamp
+
+Options:
+- `--name, -n`: Environment name
+- `--path, -p`: Environment path
+- `--output, -o`: Output file path (default: `envio.lock`)
+- `--format`: Output format (`json` or `text`)
+
+#### `envio export`
+Export environment configuration to various formats.
+
+```bash
+# Export as requirements.txt
+envio export -n my-env --format requirements
+
+# Export as Dockerfile
+envio export -n my-env --format dockerfile
+
+# Export as devcontainer.json (for VS Code Dev Containers)
+envio export -n my-env --format devcontainer
+
+# Custom output path
+envio export -n my-env --format dockerfile -o Dockerfile.prod
+```
+
+Supported formats:
+- `requirements.txt`: Standard pip requirements file
+- `Dockerfile`: Multi-stage Docker build
+- `devcontainer.json`: VS Code Dev Container configuration
+
+Options:
+- `--name, -n`: Environment name
+- `--path, -p`: Environment path
+- `--output, -o`: Output file path
+- `--format`: Export format (`requirements`, `dockerfile`, `devcontainer`)
+
+#### `envio audit`
+Scan environment for known security vulnerabilities.
+
+```bash
+# Scan for all vulnerabilities
+envio audit -n my-env
+
+# Show only high/critical vulnerabilities
+envio audit -n my-env --severity high
+
+# Auto-fix vulnerabilities by upgrading
+envio audit -n my-env --fix
+
+# Audit current directory's .venv
+envio audit
+```
+
+Options:
+- `--name, -n`: Environment name
+- `--path, -p`: Environment path
+- `--severity`: Minimum severity to report (`low`, `medium`, `high`, `critical`)
+- `--fix`: Auto-fix vulnerabilities by upgrading packages
 
 ---
 
@@ -263,12 +351,34 @@ envio install requests flask --optimize-for development --path ./test_envs
 # Test with CPU-only mode
 envio install torch numpy --cpu-only
 
+# Test dry-run mode (preview without executing)
+envio install requests flask --dry-run
+
+# Test with skip confirmation
+envio install requests flask -y
+
 # Test natural language prompt
 envio prompt "web app with fastapi"
 
 # Test conda installation (requires conda installed)
 envio install numpy pandas --env-type conda
 
+# Test lockfile generation
+envio lock -n my-env
+envio lock -n my-env --format text -o requirements.lock
+
+# Test export to different formats
+envio export -n my-env --format requirements
+envio export -n my-env --format dockerfile
+envio export -n my-env --format devcontainer
+
+# Test security audit
+envio audit -n my-env
+envio audit -n my-env --severity high
+envio audit -n my-env --fix
+
+# List all registered environments
+envio list
 # List all registered environments (reads from ~/.envio/environments.json)
 envio list
 
@@ -281,7 +391,9 @@ envio remove numpy --env my-env
 # Test help
 envio --help
 envio install --help
-envio prompt --help
+envio lock --help
+envio export --help
+envio audit --help
 ```
 
 ---
@@ -532,7 +644,22 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Changelog
 
-### v0.1.0 (Latest)
+### v0.2.0 (Phase 3)
+- **New Commands:**
+  - `envio lock` - Generate reproducible lockfiles (JSON or text format)
+  - `envio export` - Export as requirements.txt, Dockerfile, or devcontainer.json
+  - `envio audit` - Scan for security vulnerabilities with pip-audit
+- **New Options:**
+  - `--dry-run` - Preview generated script without executing
+  - `--yes, -y` - Skip confirmation prompt
+- **Security:**
+  - Vulnerability scanning integration with pip-audit
+  - Auto-fix option for detected vulnerabilities
+- **Reproducibility:**
+  - Lockfiles include hardware context (GPU/CUDA)
+  - Multiple export formats for different deployment scenarios
+
+### v0.1.0
 - Initial release
 - CLI commands: doctor, init, install, prompt, list, remove, activate
 - AI-powered dependency resolution with re-validation
@@ -544,6 +671,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 - Accurate RAM detection using psutil
 - GitHub Actions CI workflow
 - Multi-package manager support (pip, uv, conda)
+- Environment registry tracking
+- Package import-to-PyPI name mapping
 - Singleton SystemProfiler for performance
 - Import-to-package name mapping (dynamic PyPI lookup)
 - Tenacity-based retry logic for LLM calls
