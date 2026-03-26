@@ -48,6 +48,7 @@ class ScriptGenerator(ABC):
         packages: list[str],
         package_manager: str,
         python_version: str | None = None,
+        cuda_url: str | None = None,
     ) -> str:
         """Generate complete environment setup script.
 
@@ -55,6 +56,7 @@ class ScriptGenerator(ABC):
             venv_path: Full path to the virtual environment
             packages: List of packages to install
             package_manager: pip, conda, or uv
+            cuda_url: PyTorch CUDA index URL for GPU installations
         """
         pass
 
@@ -138,6 +140,7 @@ pip install {packages_str}
         packages: list[str],
         package_manager: str,
         python_version: str | None = None,
+        cuda_url: str | None = None,
     ) -> str:
         """Generate complete PowerShell setup script.
 
@@ -145,6 +148,7 @@ pip install {packages_str}
             venv_path: Full path to the virtual environment
             packages: List of packages to install
             package_manager: pip, conda, or uv
+            cuda_url: PyTorch CUDA index URL for GPU installations
         """
         env_name = Path(venv_path).name
         safe_venv_path = venv_path  # Use original path - don't sanitize drive letters
@@ -157,6 +161,10 @@ pip install {packages_str}
             except ValueError:
                 # Skip invalid package names
                 continue
+
+        # Build package string with CUDA URL if provided
+        packages_str = " ".join(safe_packages)
+        extra_index_arg = f" --extra-index-url {cuda_url}" if cuda_url else ""
 
         if package_manager == "conda":
             activation = f"""
@@ -186,13 +194,13 @@ pip install {packages_str}
 """
             if package_manager == "uv":
                 install_block = "\n".join(
-                    f'    uv pip install --python "{safe_venv_path}\\Scripts\\python.exe" {pkg}'
+                    f'    uv pip install --python "{safe_venv_path}\\Scripts\\python.exe"{extra_index_arg} {pkg}'
                     for pkg in safe_packages
                 )
                 install_note = "# Using uv for fast installation"
             else:
                 install_block = "\n".join(
-                    f"    pip install {pkg}" for pkg in safe_packages
+                    f"    pip install{extra_index_arg} {pkg}" for pkg in safe_packages
                 )
                 install_note = "# Using pip for installation"
 
@@ -312,6 +320,7 @@ pip install {packages_str}
         packages: list[str],
         package_manager: str,
         python_version: str | None = None,
+        cuda_url: str | None = None,
     ) -> str:
         """Generate complete Bash setup script.
 
@@ -319,8 +328,12 @@ pip install {packages_str}
             venv_path: Full path to the virtual environment
             packages: List of packages to install
             package_manager: pip, conda, or uv
+            cuda_url: PyTorch CUDA index URL for GPU installations
         """
         env_name = Path(venv_path).name
+
+        # Build extra index arg for CUDA
+        extra_index_arg = f" --extra-index-url {cuda_url}" if cuda_url else ""
 
         if package_manager == "conda":
             activation = f"""
@@ -359,7 +372,7 @@ source "{path_str}/bin/activate"
                     safe_packages = [shlex.quote(pkg) for pkg in packages]
 
                 install_lines = "\n".join(
-                    f"uv pip install --python {venv_path}/bin/python {pkg}"
+                    f"uv pip install --python {venv_path}/bin/python{extra_index_arg} {pkg}"
                     for pkg in safe_packages
                 )
                 install_note = "# Using uv for fast installation"
@@ -373,7 +386,9 @@ source "{path_str}/bin/activate"
                     # If any package name is invalid, fall back to quoting each package
                     safe_packages = [shlex.quote(pkg) for pkg in packages]
 
-                install_lines = "\n".join(f"pip install {pkg}" for pkg in safe_packages)
+                install_lines = "\n".join(
+                    f"pip install{extra_index_arg} {pkg}" for pkg in safe_packages
+                )
                 install_note = "# Using pip for installation"
 
         return f"""#!/bin/bash

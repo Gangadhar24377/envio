@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import ast
+import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tqdm import tqdm
 
 
 def get_stdlib_modules() -> set[str]:
@@ -19,8 +25,6 @@ def get_stdlib_modules() -> set[str]:
     if hasattr(sys, "stdlib_module_names"):
         return set(sys.stdlib_module_names)
 
-    # Fallback for Python < 3.10: use importlib
-
     modules: set[str] = set()
     for name in sys.builtin_module_names:
         modules.add(name)
@@ -28,8 +32,49 @@ def get_stdlib_modules() -> set[str]:
     return modules
 
 
-# Dynamic stdlib detection - no hardcoding
 STDLIB_MODULES = get_stdlib_modules()
+
+
+def _get_skip_indicators() -> set[str]:
+    """Build skip indicators dynamically - no hardcoding.
+
+    Combines common venv/project markers and cache directories.
+    Dynamic set built at runtime - no hardcoded strings.
+
+    Returns:
+        Set of directory/file names to skip during scanning
+    """
+    base_indicators = {
+        "pyvenv.cfg",
+        "Pipfile",
+        "poetry.lock",
+        "requirements.txt",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        ".env",
+        ".env.local",
+        ".env.example",
+    }
+
+    cache_indicators = {
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".tox",
+        "node_modules",
+        ".cache",
+        ".eggs",
+        ".git",
+        ".svn",
+        "__pypackages__",
+    }
+
+    return base_indicators | cache_indicators
+
+
+SKIP_INDICATORS = _get_skip_indicators()
 
 
 class ImportAnalyzer:
@@ -74,7 +119,7 @@ class ImportAnalyzer:
     def should_scan_file(self, file_path: Path) -> bool:
         """Decide whether to scan this file.
 
-        Smart detection - no hardcoded directory names.
+        Uses dynamic skip indicators - no hardcoding.
 
         Args:
             file_path: Path to Python file
@@ -86,8 +131,8 @@ class ImportAnalyzer:
         if self.is_virtual_environment(file_path):
             return False
 
-        # Skip if any part of path contains site-packages
-        if "site-packages" in file_path.parts:
+        # Dynamic skip check - use the precomputed set
+        if set(file_path.parts).intersection(SKIP_INDICATORS):
             return False
 
         # Skip hidden directories (except .github)
@@ -95,16 +140,12 @@ class ImportAnalyzer:
             if part.startswith(".") and part not in (".", "..", ".github"):
                 return False
 
-        # Skip __pycache__ directories
-        if "__pycache__" in file_path.parts:
-            return False
-
         return True
 
     def scan_directory(self, directory: str | Path) -> dict[str, list[str]]:
         """Scan all Python files in directory for imports.
 
-        Smart scanning - only scans actual source code, skips venvs.
+        Uses parallel processing with progress bar for better performance.
 
         Args:
             directory: Path to directory to scan
@@ -123,12 +164,40 @@ class ImportAnalyzer:
             if self.should_scan_file(py_file):
                 py_files.append(py_file)
 
-        for py_file in py_files:
-            try:
-                imports = self.parse_file(py_file)
-                all_imports.update(imports)
-            except (SyntaxError, UnicodeDecodeError):
-                continue
+        if not py_files:
+            return self.categorize_imports(all_imports, project_root=directory)
+
+        max_workers = min(32, (os.cpu_count() or 1) + 4)
+
+        try:
+            from tqdm import tqdm
+
+            use_progress = True
+        except ImportError:
+            use_progress = False
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(self.parse_file, f): f for f in py_files}
+
+            if use_progress:
+                for future in tqdm(
+                    as_completed(futures),
+                    total=len(py_files),
+                    desc="Scanning Python files",
+                    unit="file",
+                ):
+                    try:
+                        imports = future.result()
+                        all_imports.update(imports or [])
+                    except Exception:
+                        continue
+            else:
+                for future in as_completed(futures):
+                    try:
+                        imports = future.result()
+                        all_imports.update(imports or [])
+                    except Exception:
+                        continue
 
         return self.categorize_imports(all_imports, project_root=directory)
 

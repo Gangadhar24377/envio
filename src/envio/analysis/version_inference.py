@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from threading import Semaphore
+from typing import TYPE_CHECKING
 
 import requests
+
+if TYPE_CHECKING:
+    from tqdm import tqdm
 
 
 def get_stdlib_modules() -> set[str]:
@@ -35,6 +41,9 @@ class PackageVersion:
 
 class VersionInference:
     """Infer compatible versions for packages based on timeline and Python version."""
+
+    def __init__(self):
+        self._semaphore = Semaphore(5)
 
     def query_pypi(self, package_name: str) -> dict | None:
         """Query PyPI for package information.
@@ -102,7 +111,7 @@ class VersionInference:
     ) -> dict[str, str]:
         """Find compatible versions for packages.
 
-        Filters out stdlib modules before querying PyPI.
+        Uses parallel PyPI queries with rate limiting.
 
         Args:
             packages: List of package names
@@ -112,18 +121,60 @@ class VersionInference:
         Returns:
             Dictionary mapping package names to pinned versions
         """
+        packages_to_query = [p for p in packages if p not in STDLIB_MODULES]
+
+        if not packages_to_query:
+            return {}
+
         results: dict[str, str] = {}
 
-        for package in packages:
-            # Skip stdlib modules - they don't have PyPI packages
-            if package in STDLIB_MODULES:
-                continue
+        try:
+            from tqdm import tqdm
 
-            version = self._find_version_for_package(package, timeline, python_version)
-            if version:
-                results[package] = version
+            use_progress = True
+        except ImportError:
+            use_progress = False
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(
+                    self._find_version_safe, pkg, timeline, python_version
+                ): pkg
+                for pkg in packages_to_query
+            }
+
+            if use_progress:
+                for future in tqdm(
+                    as_completed(futures),
+                    total=len(packages_to_query),
+                    desc="Querying PyPI",
+                    unit="pkg",
+                ):
+                    pkg = futures[future]
+                    try:
+                        version = future.result()
+                        if version:
+                            results[pkg] = version
+                    except Exception:
+                        continue
+            else:
+                for future in as_completed(futures):
+                    pkg = futures[future]
+                    try:
+                        version = future.result()
+                        if version:
+                            results[pkg] = version
+                    except Exception:
+                        continue
 
         return results
+
+    def _find_version_safe(
+        self, package: str, timeline: str, python_version: str
+    ) -> str | None:
+        """Find version with rate limiting."""
+        with self._semaphore:
+            return self._find_version_for_package(package, timeline, python_version)
 
     def _find_version_for_package(
         self,

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from envio.analysis.import_analyzer import SKIP_INDICATORS
 
 
 @dataclass
@@ -190,10 +196,34 @@ class SyntaxDetector:
         except Exception:
             return []
 
+    def should_scan(self, file_path: Path) -> bool:
+        """Check if file should be scanned for patterns.
+
+        Uses SKIP_INDICATORS from import_analyzer for consistency.
+
+        Args:
+            file_path: Path to check
+
+        Returns:
+            True if file should be scanned
+        """
+        from envio.analysis.import_analyzer import SKIP_INDICATORS
+
+        if set(file_path.parts).intersection(SKIP_INDICATORS):
+            return False
+
+        if any(part.startswith(".") for part in file_path.parts):
+            if ".github" not in file_path.parts:
+                return False
+
+        return True
+
     def detect_from_directory(
         self, directory: Path
     ) -> dict[str, list[DeprecatedPattern]]:
         """Detect patterns in all Python files in a directory.
+
+        Uses parallel processing with progress bar.
 
         Args:
             directory: Path to directory
@@ -203,11 +233,47 @@ class SyntaxDetector:
         """
         results: dict[str, list[DeprecatedPattern]] = {}
 
-        py_files = list(directory.glob("**/*.py"))
-        for py_file in py_files:
-            patterns = self.detect_from_file(py_file)
-            if patterns:
-                results[str(py_file)] = patterns
+        all_files = list(directory.glob("**/*.py"))
+        py_files = [f for f in all_files if self.should_scan(f)]
+
+        if not py_files:
+            return results
+
+        max_workers = min(32, (os.cpu_count() or 1) + 4)
+
+        try:
+            from tqdm import tqdm
+
+            use_progress = True
+        except ImportError:
+            use_progress = False
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(self.detect_from_file, f): f for f in py_files}
+
+            if use_progress:
+                for future in tqdm(
+                    as_completed(futures),
+                    total=len(py_files),
+                    desc="Analyzing code patterns",
+                    unit="file",
+                ):
+                    py_file = futures[future]
+                    try:
+                        patterns = future.result()
+                        if patterns:
+                            results[str(py_file)] = patterns
+                    except Exception:
+                        continue
+            else:
+                for future in as_completed(futures):
+                    py_file = futures[future]
+                    try:
+                        patterns = future.result()
+                        if patterns:
+                            results[str(py_file)] = patterns
+                    except Exception:
+                        continue
 
         return results
 

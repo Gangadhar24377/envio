@@ -10,17 +10,168 @@ import traceback
 from pathlib import Path
 
 import click
+import requests
 
 from envio import __version__
 
 VALID_PACKAGE_MANAGERS = ["pip", "conda", "uv"]
 
+# Common import name to PyPI package name mapping
+IMPORT_TO_PYPI = {
+    "pil": "pillow",
+    "cv2": "opencv-python",
+    "sklearn": "scikit-learn",
+    "skimage": "scikit-image",
+    "yaml": "pyyaml",
+    "ipython": "ipython",
+    "scipy": "scipy",
+    "PIL": "pillow",
+}
+
+
+def _normalize_package(pkg: str) -> list[str]:
+    """Normalize package name and validate version exists on PyPI.
+
+    Args:
+        pkg: Package specification (e.g., "PIL==1.1.6", "requests", "numpy>=1.0")
+
+    Returns:
+        List with normalized package name and status [normalized_name, status]
+        status: "ok" = valid, "not_found" = version doesn't exist, "unknown" = can't determine
+    """
+    # Extract package name and version
+    version_spec = None
+    if "==" in pkg:
+        pkg_name, pkg_version = pkg.split("==", 1)
+        pkg_name = pkg_name.strip().lower()
+        pkg_version = pkg_version.strip()
+        version_spec = f"=={pkg_version}"
+    elif ">=" in pkg:
+        pkg_name, _ = pkg.split(">=", 1)
+        pkg_name = pkg_name.strip().lower()
+    elif "<=" in pkg:
+        pkg_name, _ = pkg.split("<=", 1)
+        pkg_name = pkg_name.strip().lower()
+    else:
+        pkg_name = pkg.strip().lower()
+
+    # Map to PyPI name
+    pypi_name = IMPORT_TO_PYPI.get(pkg_name, pkg_name)
+
+    # If version specified, validate it exists on PyPI (using pypi_name)
+    if version_spec:
+        try:
+            url = f"https://pypi.org/pypi/{pypi_name}/{pkg_version}/json"
+            response = requests.get(url, timeout=5)
+            if response.status_code == 404:
+                return [pkg, "not_found"]
+        except Exception:
+            pass
+
+    # Return normalized name
+    if version_spec:
+        normalized = f"{pypi_name}{version_spec}"
+    else:
+        normalized = pypi_name
+
+    return [normalized, "ok"]
+
+
+def _validate_and_normalize_packages(packages: list[str], console) -> list[str]:
+    """Validate packages against PyPI and normalize names.
+
+    Args:
+        packages: List of package specifications
+        console: Console UI for output
+
+    Returns:
+        List of normalized, validated packages
+    """
+    normalized = []
+    issues = []
+
+    console.print_info("Validating packages against PyPI...")
+
+    for pkg in packages:
+        result, status = _normalize_package(pkg)
+
+        if status == "not_found":
+            issues.append(f"  {pkg} → not found on PyPI")
+            # Try to find latest version
+            try:
+                pkg_name = pkg.split("==")[0].lower()
+                pypi_name = IMPORT_TO_PYPI.get(pkg_name, pkg_name)
+                url = f"https://pypi.org/pypi/{pypi_name}/json"
+                response = requests.get(url, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    latest = data.get("info", {}).get("version", "unknown")
+                    fixed = f"{pypi_name}=={latest}"
+                    console.print_info(f"  {pkg} → {fixed}")
+                    normalized.append(fixed)
+                else:
+                    normalized.append(result)
+            except Exception:
+                normalized.append(result)
+        else:
+            normalized.append(result)
+
+    if issues:
+        console.print_warning("Some packages have issues:" + "\n".join(issues))
+
+    return normalized
+
+
+def _ensure_envio_config() -> None:
+    """Ensure ~/.envio/ directory exists with sample .env on first run."""
+    from pathlib import Path
+
+    config_dir = Path.home() / ".envio"
+    sample_env = config_dir / ".env.example"
+    user_env = config_dir / ".env"
+
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    if not user_env.exists() and not sample_env.exists():
+        sample_content = """# Envio Configuration
+# Add your API keys here - this file works from any directory!
+
+# OpenAI API Key (required for AI features)
+OPENAI_API_KEY=sk-your-openai-key-here
+
+# Optional: Serper API Key (for web search)
+# SERPER_API_KEY=your-serper-key
+
+# Optional: Ollama settings (for local models)
+# ENVIO_LLM_MODEL=llama3
+# ENVIO_OLLAMA_HOST=http://localhost:11434
+"""
+        sample_env.write_text(sample_content)
+
 
 def _load_dotenv() -> None:
-    """Load environment variables from .env file."""
-    from dotenv import load_dotenv
+    """Load environment variables from .env file.
 
-    load_dotenv()
+    Looks in multiple locations (priority order):
+    1. Current working directory (for project-specific .env)
+    2. Envio project directory (where envio is installed)
+    3. ~/.envio/ (global config - works from any directory)
+    """
+    _ensure_envio_config()
+
+    from dotenv import load_dotenv
+    from pathlib import Path
+
+    locations = [
+        Path.cwd() / ".env",
+        Path(__file__).parent.parent / ".env",
+        Path.home() / ".envio" / ".env",
+    ]
+
+    for env_path in locations:
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+            return
 
 
 def detect_package_managers() -> dict[str, bool]:
@@ -138,13 +289,55 @@ def _resolve_and_install(
         resolved = resolver.resolve(packages, package_manager, profile, preferences)
         final_packages = resolved.get("packages", packages)
 
-        if resolved.get("status") in ("conflict", "error"):
+        # Check for any failure status and attempt healing
+        if resolved.get("status") in ("conflict", "error", "not_found", "failed"):
             console.print_resolution_status(
-                resolved["status"],
+                resolved.get("status", "error"),
                 resolved.get("resolution_method", "unknown"),
+                resolved.get("error"),
             )
 
+            # Trigger self-healing for failed resolutions
+            console.print_info("Attempting to fix resolution issues...")
+            healed = resolver.heal_and_resolve(
+                packages,
+                resolved.get("error", ""),
+                package_manager,
+            )
+
+            if healed.get("status") in ("healed", "resolved"):
+                final_packages = healed.get("packages", packages)
+                console.print_success(f"Resolved! Using packages: {final_packages}")
+                console.print_resolution_status(
+                    "success",
+                    healed.get("resolution_method", "healed"),
+                )
+            elif healed.get("status") == "partial":
+                console.print_warning(
+                    "Partial resolution - some packages may need manual intervention"
+                )
+                final_packages = healed.get("packages", packages)
+            # If healing also failed, continue with original packages
+
+        # Also handle cases where resolution succeeded but had to fix issues (e.g., not_found -> resolved)
+        elif resolved.get("resolution_method") in ("ai_search", "ai_healed_validated"):
+            # AI had to fix issues during initial resolution
+            final_packages = resolved.get("packages", packages)
+            console.print_success(f"Resolved via AI! Using packages: {final_packages}")
+
         console.print_packages_table(final_packages, "Resolved Packages")
+
+        # Get CUDA URL for PyTorch if GPU is available
+        cuda_url = None
+        if profile.gpu.available and package_manager in ("pip", "uv"):
+            cuda_version = profile.gpu.cuda_version
+            if cuda_version:
+                if "12.4" in cuda_version:
+                    cuda_url = "https://download.pytorch.org/whl/cu124"
+                elif "12.1" in cuda_version:
+                    cuda_url = "https://download.pytorch.org/whl/cu121"
+                elif "11.8" in cuda_version:
+                    cuda_url = "https://download.pytorch.org/whl/cu118"
 
         # Generate script
         console.print_info("Generating installation script...")
@@ -152,6 +345,7 @@ def _resolve_and_install(
             venv_path=str(venv_path),
             packages=final_packages,
             package_manager=package_manager,
+            cuda_url=cuda_url,
         )
 
         script_path = executor.write_script(
@@ -420,9 +614,14 @@ def init(env_type: str | None, verbose: bool) -> None:
         final_env_type = env_type or detected.get("env_type") or "uv"
         console.print_info(f"Package manager: {final_env_type}")
 
+        # Validate and normalize packages before installation
+        validated_packages = _validate_and_normalize_packages(
+            detected["packages"], console
+        )
+
         # Setup environment
         _resolve_and_install(
-            packages=detected["packages"],
+            packages=validated_packages,
             env_path=env_path,
             env_name=env_name,
             package_manager=final_env_type,
@@ -504,6 +703,9 @@ def prompt(
 
         console.print_packages_table(packages, "Suggested Packages")
 
+        # Validate and normalize packages before installation
+        validated_packages = _validate_and_normalize_packages(packages, console)
+
         # Ask for environment name and path
         default_path = str(Path.home() / "Documents" / "envs")
         env_path = (
@@ -513,7 +715,7 @@ def prompt(
 
         # Resolve and install
         _resolve_and_install(
-            packages=packages,
+            packages=validated_packages,
             env_path=env_path,
             env_name=env_name,
             package_manager=env_type,
@@ -613,6 +815,10 @@ def install(
             env_type = "uv"
 
         pkg_list = list(packages)
+
+        # Validate and normalize packages
+        validated_packages = _validate_and_normalize_packages(pkg_list, console)
+
         preferences = {}
         if cpu_only:
             preferences["cpu_only"] = True
@@ -633,7 +839,7 @@ def install(
             cmd_parts.append(f"--optimize-for {optimize_for}")
 
         _resolve_and_install(
-            packages=pkg_list,
+            packages=validated_packages,
             env_path=env_path,
             env_name=env_name,
             package_manager=env_type,
@@ -1116,6 +1322,26 @@ def audit(
         console.print_error(f"Error: {e}")
         if verbose:
             console._safe_print(traceback.format_exc())
+
+
+@cli.command("resurrect")
+@click.argument("source")
+@click.option("--name", "-n", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Installation path")
+@click.option("--env-type", "-e", "env_type", default="uv", help="Package manager")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def resurrect(
+    source: str,
+    name: str | None,
+    path: str | None,
+    env_type: str,
+    verbose: bool,
+) -> None:
+    """Resurrect dead repositories by analyzing imports and generating requirements."""
+    _load_dotenv()
+    from envio.commands.resurrect import resurrect_command
+
+    resurrect_command(source, name, path, env_type, verbose)
 
 
 @cli.command("list")

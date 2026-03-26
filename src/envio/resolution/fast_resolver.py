@@ -108,6 +108,10 @@ class FastResolver:
             )
 
             if result.returncode == 0:
+                # Validate versions exist on PyPI (uv doesn't always catch bad versions)
+                version_check = self._validate_versions_on_pypi(packages)
+                if version_check:
+                    return version_check
                 return ResolutionResult(
                     status=ResolutionStatus.SUCCESS,
                     packages=packages,
@@ -126,6 +130,42 @@ class FastResolver:
                 status=ResolutionStatus.ERROR,
                 error_message=str(e),
             )
+
+    def _validate_versions_on_pypi(
+        self, packages: list[str]
+    ) -> ResolutionResult | None:
+        """Validate that package versions exist on PyPI.
+
+        Args:
+            packages: List of package specifications (e.g., ["pillow==1.1.6", "numpy==2.0"])
+
+        Returns:
+            ResolutionResult if validation fails, None if all packages are valid
+        """
+        for pkg in packages:
+            if "==" not in pkg:
+                continue
+
+            pkg_name, pkg_version = pkg.split("==", 1)
+            pkg_name = pkg_name.strip().lower()
+            pkg_version = pkg_version.strip()
+
+            try:
+                url = f"https://pypi.org/pypi/{pkg_name}/{pkg_version}/json"
+                response = requests.get(url, timeout=10)
+
+                if response.status_code == 404:
+                    return ResolutionResult(
+                        status=ResolutionStatus.NOT_FOUND,
+                        packages=packages,
+                        error_message=f"Package '{pkg_name}=={pkg_version}' not found on PyPI. "
+                        f"The specified version does not exist.",
+                    )
+            except Exception:
+                # If PyPI check fails, skip validation (don't block on network issues)
+                pass
+
+        return None
 
     def _parse_uv_error(
         self, stderr: str, stdout: str, packages: list[str]
@@ -147,6 +187,15 @@ class FastResolver:
             )
 
         if "not found" in stderr_lower or "package not found" in stderr_lower:
+            return ResolutionResult(
+                status=ResolutionStatus.NOT_FOUND,
+                packages=packages,
+                error_message=stderr,
+                stderr=stderr,
+                stdout=stdout,
+            )
+
+        if "no version" in stderr_lower or "unsatisfiable" in stderr_lower:
             return ResolutionResult(
                 status=ResolutionStatus.NOT_FOUND,
                 packages=packages,

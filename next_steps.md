@@ -31,6 +31,7 @@
 **Priority:** High
 **Effort:** High
 **Impact:** Very High
+**Status:** ✅ COMPLETE
 
 **What it does:**
 ```bash
@@ -64,6 +65,7 @@ envio resurrect https://github.com/huggingface/transformers-old
 **Priority:** Medium
 **Effort:** Medium
 **Impact:** High
+**Status:** ✅ COMPLETE
 
 **What it does:**
 ```bash

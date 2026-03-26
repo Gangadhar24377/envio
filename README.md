@@ -20,6 +20,9 @@ Envio is an AI-powered Python environment manager that combines the speed of `uv
 - **Import Mapping**: Dynamic import-to-package name resolution (e.g., cv2 → opencv-python)
 - **Environment Management**: List, activate, and remove packages from virtual environments
 - **Resilient Error Handling**: Tenacity-based retry logic with graceful fallbacks
+- **Ollama Support**: Use local LLMs instead of OpenAI API
+- **Apple Silicon MPS**: Automatic detection for M1/M2/M3/M4 Macs
+- **Ghost-Town Resurrection**: Revive old Python projects by scanning code and inferring dependencies
 
 ## Prerequisites
 

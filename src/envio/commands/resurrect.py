@@ -168,8 +168,23 @@ def _analyze_directory(
         console.print_warning("Could not find compatible versions")
         return
 
+    # Validate and normalize packages against PyPI (dynamic - handles any deprecated/wrong names)
+    from envio.cli import _validate_and_normalize_packages
+
+    pkgs_with_versions = [f"{pkg}=={ver}" for pkg, ver in versions.items()]
+    validated_packages = _validate_and_normalize_packages(pkgs_with_versions, console)
+
+    # Rebuild versions dict from validated packages
+    validated_versions = {}
+    for pkg_spec in validated_packages:
+        if "==" in pkg_spec:
+            pkg_name, pkg_version = pkg_spec.split("==", 1)
+            validated_versions[pkg_name] = pkg_version
+        else:
+            validated_versions[pkg_spec] = "latest"
+
     # Generate requirements.txt
-    requirements_content = inference.generate_requirements(versions)
+    requirements_content = inference.generate_requirements(validated_versions)
 
     console.print_info("Generated requirements.txt:")
     console.print_code_block(requirements_content, "txt")
@@ -192,7 +207,7 @@ def _analyze_directory(
         profile = profiler.profile()
 
         _resolve_and_install(
-            packages=[f"{pkg}=={ver}" for pkg, ver in versions.items()],
+            packages=[f"{pkg}=={ver}" for pkg, ver in validated_versions.items()],
             env_path=env_path,
             env_name=env_name,
             package_manager=env_type,

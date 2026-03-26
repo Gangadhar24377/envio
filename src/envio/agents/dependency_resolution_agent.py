@@ -140,8 +140,6 @@ class DependencyResolver:
         for pkg in packages:
             if "torch" in pkg.lower():
                 optimized.append(pkg)
-                if cuda_url:
-                    optimized.append(f"--extra-index-url {cuda_url}")
             elif "xformers" in pkg.lower() and gpu.cuda_version:
                 cuda_short = "124" if "12.4" in gpu.cuda_version else "118"
                 optimized.append(f"xformers cu{cuda_short}xx")

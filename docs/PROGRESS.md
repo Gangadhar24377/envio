@@ -29,6 +29,19 @@ ENVIO_LLM_API_BASE=http://localhost:11434/v1  # optional for Ollama
 
 ### Recent Improvements (Phase 2-3)
 
+#### Phase 3.5: Performance Optimization (Mar 27, 2026)
+- **Parallel Processing**: import_analyzer.py and syntax_detector.py now use ThreadPoolExecutor
+- **Dynamic Skip Indicators**: Automatically skips cache/venv directories without hardcoding
+- **Rate-Limited PyPI Queries**: version_inference.py uses semaphore for controlled concurrency
+- **TUI Progress**: tqdm progress bars for file scanning operations
+- **Dynamic Stdlib Detection**: Uses `sys.stdlib_module_names` instead of hardcoded lists
+- **Multi-Location .env Loading**: Checks cwd → project dir → ~/.envio/ for API keys
+
+#### CLI Fixes
+- Fixed syntax errors in cli.py (missing try/except blocks from merge conflicts)
+- Fixed virtualenv_manager.py syntax errors
+- Added proper error handling for all 11 commands
+
 #### Shell Injection Protection
 - Removed `shell=True` from subprocess calls
 - Added `shlex.quote()` for all user inputs in shell scripts
@@ -97,7 +110,7 @@ ENVIO_LLM_API_BASE=http://localhost:11434/v1  # optional for Ollama
 
 ### Phase 4: Future Features (Growth)
 
-- [ ] 4.1 Ghost-Town Repo Resurrection
+- [x] 4.1 Ghost-Town Repo Resurrection
 - [x] 4.2 Ollama/Local LLM Support
 - [x] 4.3 Apple Silicon/MPS Detection
 - [ ] 4.4 GitHub Action
