@@ -27,6 +27,44 @@ ENVIO_LLM_API_KEY=sk-...              # or leave blank for local models
 ENVIO_LLM_API_BASE=http://localhost:11434/v1  # optional for Ollama
 ```
 
+### Recent Improvements (Phase 2-3)
+
+#### Shell Injection Protection
+- Removed `shell=True` from subprocess calls
+- Added `shlex.quote()` for all user inputs in shell scripts
+- Used list-based subprocess.run() for safer execution
+
+#### Semantic Version Comparison
+- Uses `packaging.version.Version` instead of string comparison
+- Fixes incorrect results like `"1.9" > "1.82.6"`
+
+#### Self-Healing Improvements
+- Error deduplication using hash-based detection
+- Three fallback strategies: relax constraints → find alternatives → skip optionals
+- Re-validation of fixes with FastResolver
+
+#### Import-to-Package Mapping
+- Dynamic PyPI lookup for imports (cv2 → opencv-python)
+- Local caching for performance
+- No hardcoded mappings
+
+#### VirtualEnvManager CLI
+- `envio list` - List all virtual environments
+- `envio activate` - Show activation command
+- `envio remove` - Uninstall packages from environment
+
+#### Tenacity Retry Logic
+- LLM calls retry up to 3 times with exponential backoff
+- Graceful degradation when API key not set
+
+#### Singleton SystemProfiler
+- Caches GPU detection results
+- Prevents repeated nvidia-smi calls
+
+#### Test Coverage
+- 78 tests passing
+- Coverage for analysis, core, resolution, LLM, and CLI modules
+
 ---
 
 ## Roadmap Phases
@@ -64,6 +102,27 @@ ENVIO_LLM_API_BASE=http://localhost:11434/v1  # optional for Ollama
 - [x] 4.3 Apple Silicon/MPS Detection
 - [ ] 4.4 GitHub Action
 - [ ] 4.5 Semantic Environment Diffing
+### Phase 2: Code Quality & Stability - COMPLETE
+
+- [x] **2.1 Shell Injection Protection**
+- [x] **2.2 Semantic Version Comparison**
+- [x] **2.3 Import-to-Package Mapping**
+- [x] **2.4 VirtualEnvManager CLI Commands**
+- [x] **2.5 Tenacity Retry Logic**
+- [x] **2.6 Test Coverage (78 tests)**
+
+### Phase 3: The "Reproducibility" Engine (Growth)
+
+- [ ] 3.1 Ghost-Town Repo Resurrection
+- [ ] 3.2 Jailbroken Local LLM Execution
+- [ ] 3.3 AI-Optimized Containerization
+- [ ] 3.4 Semantic Environment Diffing
+
+### Phase 4: Team & Enterprise Workflows (Maturity)
+
+- [ ] 4.1 The Envio GitHub Action
+- [ ] 4.2 Security & CVE Profiling
+- [ ] 4.3 Dependency Cost Estimation
 
 ---
 
@@ -164,14 +223,27 @@ uv run envio install requests flask numpy
 uv run envio install torch torchvision --env-type uv
 ```
 
+### Environment Management
+```bash
+# List all virtual environments
+uv run envio list
+
+# Show activation command for an environment
+uv run envio activate --env my-env
+
+# Remove packages from an environment
+uv run envio remove numpy pandas --env my-env
+```
+
 ### Programmatic Usage
 ```python
 from envio.core import SystemProfiler
 from envio.llm import LLMClient
 from envio.resolution import FastResolver
 from envio.ui import ConsoleUI
+from envio.analysis import ImportAnalyzer, find_package_for_import
 
-# System profiling
+# System profiling (singleton)
 profile = SystemProfiler().profile()
 print(f"GPU: {profile.gpu.name}")
 
@@ -179,7 +251,7 @@ print(f"GPU: {profile.gpu.name}")
 resolver = FastResolver()
 result = resolver.resolve(["requests", "flask"])
 
-# LLM client
+# LLM client (with retry)
 llm = LLMClient()
 response = llm.chat(user_prompt="What is Python?")
 print(response.content)
@@ -187,6 +259,13 @@ print(response.content)
 # Rich console
 console = ConsoleUI()
 console.print_success("Setup complete!")
+
+# Import analysis
+analyzer = ImportAnalyzer()
+imports = analyzer.scan_directory("/path/to/project")
+
+# Package mapping
+package = find_package_for_import("cv2")  # Returns "opencv-python"
 ```
 
 ---
@@ -194,6 +273,15 @@ console.print_success("Setup complete!")
 ## Testing Envio
 
 ```bash
+# Run all tests (78 tests)
+uv run pytest
+
+# Run tests with verbose output
+uv run pytest -v
+
+# Run specific test module
+uv run pytest src/tests/test_analysis/test_import_analyzer.py
+
 # Verify imports work
 uv run python -c "from envio.cli import main; print('OK')"
 
@@ -208,6 +296,9 @@ uv run python -c "from envio.llm import LLMClient; c = LLMClient(); print(c.list
 
 # Test Rich console
 uv run python -c "from envio.ui import ConsoleUI; c = ConsoleUI(); c.print_success('Test passed!')"
+
+# Test package mapping
+uv run python -c "from envio.analysis import find_package_for_import; print(find_package_for_import('cv2'))"
 
 # Run linter
 uv run ruff check src/
