@@ -5,7 +5,7 @@ Envio is an AI-powered Python environment manager that combines the speed of `uv
 ## Features
 
 - **Fast Resolution**: Uses `uv` for millisecond dependency resolution
-- **Self-Healing**: AI-powered conflict resolution when dependencies fail (3 attempts)
+- **Self-Healing**: AI-powered conflict resolution when dependencies fail (3 attempts with error deduplication)
 - **Hardware-Aware**: Detects GPU/CUDA and optimizes packages accordingly
 - **Cross-Platform**: Works on Windows, Linux, and macOS
 - **Beautiful TUI**: Rich terminal output with timestamps, tables, and progress bars
@@ -17,6 +17,9 @@ Envio is an AI-powered Python environment manager that combines the speed of `uv
 - **Multiple Export Formats**: Export as requirements.txt, Dockerfile, or devcontainer.json
 - **Dry-Run Mode**: Preview changes before execution with `--dry-run`
 - **Interactive Confirmation**: Optional prompts before making changes
+- **Import Mapping**: Dynamic import-to-package name resolution (e.g., cv2 → opencv-python)
+- **Environment Management**: List, activate, and remove packages from virtual environments
+- **Resilient Error Handling**: Tenacity-based retry logic with graceful fallbacks
 
 ## Prerequisites
 
@@ -129,6 +132,53 @@ Output includes:
 - System RAM (uses psutil for accurate detection)
 - Available package managers (pip/uv/conda)
 - LLM configuration (API key status)
+
+#### `envio list`
+List all environments created by envio (reads from `~/.envio/environments.json`).
+
+```bash
+# List all registered environments
+envio list
+```
+
+Output:
+```
+                  Registered Environments
+┌──────────────┬──────────────────────────┬──────┬─────┬──────────┐
+│ Name         │ Path                     │ Pkgs │ Mgr │ Created  │
+├──────────────┼──────────────────────────┼──────┼─────┼──────────┤
+│ ml-env       │ ~/Documents/envs/ml-env  │ 12   │ uv  │ Mar 20   │
+│ web-app      │ ~/Documents/envs/web-app │ 8    │ uv  │ Mar 22   │
+└──────────────┴──────────────────────────┴──────┴─────┴──────────┘
+  ml-env: envio prompt 'ML with pytorch'
+  web-app: envio install flask requests --optimize-for development
+```
+
+- Shows `(missing)` tag for deleted environments
+- Displays the exact command used to create each environment
+- Use that command to recreate the environment anywhere
+
+#### `envio activate`
+Show activation command for a virtual environment.
+
+```bash
+# Activate environment by name (searches in ~/Documents/envs/)
+envio activate --env my-env
+
+# Activate environment at specific path
+envio activate --path /path/to/.venv
+```
+
+#### `envio remove`
+Remove packages from a virtual environment.
+
+```bash
+# Remove packages from an environment
+envio remove numpy pandas --env my-env
+
+# Remove from environment at specific path
+envio remove requests --path /path/to/.venv
+```
 
 #### `envio init`
 Scan current directory and set up environment from detected files.
@@ -329,6 +379,14 @@ envio audit -n my-env --fix
 
 # List all registered environments
 envio list
+# List all registered environments (reads from ~/.envio/environments.json)
+envio list
+
+# Show activation command for an environment
+envio activate --env my-env
+
+# Remove packages from an environment
+envio remove numpy --env my-env
 
 # Test help
 envio --help
@@ -341,6 +399,8 @@ envio audit --help
 ---
 
 ## Output Example
+
+### Creating an Environment
 
 ```
 +-----------------------------------------------------------------------------+
@@ -371,6 +431,29 @@ envio audit --help
 +-----------------------------------------------------------------------------+
 ```
 
+### Listing Registered Environments
+
+```bash
+$ envio list
+```
+
+```
+                            Registered Environments
++-----------------------------------------------------------------------------+
+| Name              | Path                           | Pkgs | Mgr | Created   |
+|-------------------+--------------------------------+------+-----+-----------|
+| my-env            | ~/Documents/envs/my-env        |    3 | uv  | Mar 20    |
+| data-science      | ~/Documents/envs/data-science  |   12 | uv  | Mar 22    |
+| web-app (missing) | ~/Documents/envs/web-app       |    8 | uv  | Mar 25    |
++-----------------------------------------------------------------------------+
+01:45:00 [*]
+01:45:00 [*]   my-env: envio install requests flask numpy --optimize-for development
+01:45:00 [*]   data-science: envio prompt 'data science with pandas numpy scikit-learn'
+```
+
+The `web-app` environment shows `(missing)` because the folder was deleted manually.
+The recreation command is shown for each existing environment.
+
 ---
 
 ## Architecture
@@ -380,26 +463,39 @@ src/envio/
 ├── cli.py                      # CLI commands
 ├── agents/                     # AI agents
 │   ├── nlp_agent.py           # NLP processing
-│   ├── dependency_resolution_agent.py  # Dependency resolution (with SelfHealingLoop)
+│   ├── dependency_resolution_agent.py  # Dependency resolution (with SerperSearchTool)
 │   └── command_construction_agent.py   # Command generation
+├── analysis/                   # Code analysis
+│   ├── import_analyzer.py     # Import detection (uses sys.stdlib_module_names)
+│   ├── syntax_detector.py     # Code age detection
+│   ├── version_inference.py   # Version compatibility
+│   └── package_mapping.py     # Import-to-package name mapping (dynamic PyPI lookup)
 ├── core/                       # Core utilities
-│   ├── system_profiler.py     # System/hardware detection (uses psutil)
+│   ├── system_profiler.py     # System/hardware detection (singleton, uses psutil)
 │   ├── executor.py            # Script execution
 │   ├── script_generator.py    # Cross-platform script generation (pip/uv/conda)
-│   └── virtualenv_manager.py  # Virtual environment management
+│   ├── virtualenv_manager.py  # Virtual environment management
+│   └── registry.py            # Environment registry (~/.envio/environments.json)
 ├── resolution/                 # Resolution engine
 │   ├── fast_resolver.py       # Fast uv-based resolution
-│   └── self_healing.py        # AI-powered conflict resolution (3 attempts)
+│   └── self_healing.py        # AI-powered conflict resolution (3 attempts, fallback strategies)
 ├── llm/                        # LLM abstraction layer
-│   ├── client.py              # LiteLLM wrapper
+│   ├── client.py              # LiteLLM wrapper (with tenacity retry)
 │   ├── prompts.py             # All prompts
 │   └── parser.py              # Response parsing
 ├── tools/                      # Tools for agents
 │   ├── package_lookup.py      # PyPI/Conda lookup
-│   └── serper_search.py       # Web search
-└── ui/                         # Terminal UI
-    └── console.py             # Rich console with timestamps
+│   └── serper_search.py       # Web search (wired into DependencyResolver)
+├── ui/                         # Terminal UI
+│   └── console.py             # Rich console with timestamps
+└── utils/                      # Utilities
+    ├── sanitize.py            # Shell input sanitization
+    └── bash_executor.py       # Safe subprocess execution
 ```
+
+**Data stored at:**
+- `~/.envio/environments.json` — Registry of all envio-created environments
+- Each environment tracks: name, path, packages, creation command, package manager, creation date
 
 ---
 
@@ -446,9 +542,14 @@ When a package installation fails, Envio automatically:
 
 1. **Detects the error** from stderr
 2. **Analyzes with AI** to understand the conflict
-3. **Suggests fixes** (different versions, alternative packages)
-4. **Retries installation** (up to 3 attempts)
-5. **Reports success** or final error
+3. **Checks for duplicate errors** using hash-based deduplication
+4. **Applies fallback strategies** in order:
+   - Strategy 1: Relax version constraints
+   - Strategy 2: Find alternative packages
+   - Strategy 3: Skip optional dependencies
+5. **Validates fixes** using FastResolver
+6. **Retries installation** (up to 3 attempts)
+7. **Reports success** or final error
 
 Example output when healing kicks in:
 
@@ -562,7 +663,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - Initial release
 - CLI commands: doctor, init, install, prompt, list, remove, activate
 - AI-powered dependency resolution with re-validation
-- Self-healing mechanism (3-attempt retry loop)
+- Self-healing mechanism (3-attempt retry loop with fallback strategies)
 - Hardware-aware package selection
 - Cross-platform support (Windows, Linux, macOS)
 - Rich terminal UI with timestamps
@@ -572,3 +673,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 - Multi-package manager support (pip, uv, conda)
 - Environment registry tracking
 - Package import-to-PyPI name mapping
+- Singleton SystemProfiler for performance
+- Import-to-package name mapping (dynamic PyPI lookup)
+- Tenacity-based retry logic for LLM calls
+- Shell injection protection (shlex.quote, list subprocess args)
+- Semantic version comparison using packaging.version
+- Error deduplication in self-healing loop
+- **Environment registry** — Tracks all envio-created environments in `~/.envio/environments.json`
+  - Records the exact command used to create each environment
+  - `envio list` shows all registered environments with recreation commands
+  - Fast O(1) lookup — no filesystem scanning

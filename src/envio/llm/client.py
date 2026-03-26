@@ -8,6 +8,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import litellm
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_OLLAMA_MODEL = "llama3"
@@ -134,6 +140,12 @@ class LLMClient:
         if self.config.provider == "ollama":
             self.config.model = f"ollama/{self.config.model}"
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((Exception,)),
+        reraise=True,
+    )
     def chat(
         self,
         system_prompt: str | None = None,
@@ -152,6 +164,12 @@ class LLMClient:
         Returns:
             LLMResponse with the model's reply
         """
+        # Check for API key
+        if not self.config.api_key:
+            raise ValueError(
+                "No API key configured. Please set ENVIO_LLM_API_KEY or OPENAI_API_KEY"
+            )
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -205,13 +223,15 @@ class LLMClient:
         Returns:
             Parsed JSON dictionary
         """
+        from envio.llm.parser import ResponseParser
+
         response = self.chat(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=temperature,
         )
 
-        return self._extract_json(response.content)
+        return ResponseParser.extract_json(response.content)
 
     def _extract_json(self, text: str) -> dict[str, Any]:
         """Extract JSON from response text."""
