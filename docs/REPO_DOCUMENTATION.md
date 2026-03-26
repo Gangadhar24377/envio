@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Envio** is an AI-powered event and package manager designed to automate Python development environment setup. It uses artificial intelligence (LLMs and multi-agent systems) to understand natural language package management requests, resolve package dependencies automatically, generate appropriate installation commands (for pip or conda), create executable bash scripts to set up entire development environments, and run the setup in an isolated tmux session.
+**Envio** is an AI-powered Python environment manager that combines the speed of `uv` with intelligent dependency resolution. When standard resolution fails, Envio analyzes errors and automatically fixes conflicts using AI with multiple fallback strategies.
 
 Think of it as having an AI assistant that handles all your dependency management headaches - you just tell it what packages you need, and it handles the rest.
 
@@ -11,25 +11,22 @@ Think of it as having an AI assistant that handles all your dependency managemen
 ## Tech Stack and Technologies
 
 ### Core Framework
-- **Python** - Main programming language
-- **CrewAI** - Multi-agent AI framework for orchestrating the workflow
-- **LangChain** - AI/LLM integration framework
-- **OpenAI GPT-4o-mini** - LLM for natural language understanding and generation
+- **Python 3.10+** - Main programming language
+- **LiteLLM** - Multi-provider LLM integration (supports 100+ providers)
+- **uv** - Fast dependency resolution
 
 ### Key Dependencies
 | Category | Packages |
 |----------|----------|
-| AI/LLM | `crewai`, `langchain`, `langchain-openai`, `openai`, `litellm` |
-| Web Frameworks | `fastapi`, `uvicorn` |
-| Data Science/ML | `tensorflow`, `keras`, `scikit-learn`, `numpy`, `pandas`, `matplotlib` |
-| Vector Databases | `chromadb`, `lancedb`, `qdrant-client` |
-| Utilities | `python-dotenv`, `requests`, `httpx`, `pyyaml` |
-| Testing | `pytest` |
-| Cloud APIs | `google-cloud-aiplatform`, `boto3` |
+| AI/LLM | `litellm`, `tenacity` |
+| CLI | `click`, `rich` |
+| Utilities | `python-dotenv`, `requests`, `httpx`, `pyyaml`, `psutil`, `packaging` |
+| Testing | `pytest`, `pytest-asyncio` |
+| Linting | `ruff`, `mypy` |
 
 ### External Services
-- **OpenAI API** - For LLM processing
-- **Serper API** - For web search (fallback package lookup)
+- **OpenAI API** (or any LiteLLM-supported provider) - For LLM processing
+- **Serper API** - For web search (package lookup fallback)
 - **PyPI** - Python package repository lookup
 - **Conda** - Alternative package manager support
 
@@ -38,29 +35,42 @@ Think of it as having an AI assistant that handles all your dependency managemen
 ## Directory Structure
 
 ```
-envio/
-├── .env                    # Environment variables (API keys)
-├── README.md               # Basic project description
-├── ROADMAP.md              # Development roadmap (6 phases)
-├── IMPROVEMENTS.md         # Detailed improvements & feature ideas
-├── requirements.txt        # Python dependencies (262 packages!)
-├── main.py                 # Main entry point (250 lines)
-├── setup_env.sh            # Example setup script
-├── agents/                 # AI agent implementations
-│   ├── __init__.py
-│   ├── nlp_agent.py               # Extracts package info from user input
-│   ├── dependency_resolution_agent.py  # Resolves package dependencies
-│   ├── command_construction_agent.py   # Generates installation commands
-│   └── bash_file_generator_agent.py    # Creates bash scripts
-├── tools/                  # Reusable tools for agents
-│   ├── __init__.py
-│   ├── package_lookup.py         # PyPI/Conda package lookup
-│   └── serper_search.py          # Web search fallback
-├── utils/                  # Utility functions
-│   ├── __init__.py
-│   └── bash_executor.py          # Bash script execution
-└── testing_env/            # Test environment
-    └── setup_env.sh        # Sample generated script
+src/envio/
+├── __init__.py
+├── __main__.py
+├── cli.py                      # CLI commands (doctor, init, install, prompt, list, remove, activate)
+├── agents/                     # AI agents
+│   ├── nlp_agent.py           # NLP processing
+│   ├── dependency_resolution_agent.py  # Dependency resolution (with SerperSearchTool)
+│   └── command_construction_agent.py   # Command generation
+├── analysis/                   # Code analysis
+│   ├── import_analyzer.py     # Import detection (uses sys.stdlib_module_names)
+│   ├── syntax_detector.py     # Code age detection
+│   ├── version_inference.py   # Version compatibility
+│   └── package_mapping.py     # Import-to-package name mapping (dynamic PyPI lookup)
+├── commands/                   # CLI command implementations
+│   └── resurrect.py           # Repository resurrection
+├── core/                       # Core utilities
+│   ├── system_profiler.py     # System/hardware detection (singleton, uses psutil)
+│   ├── executor.py            # Script execution
+│   ├── script_generator.py    # Cross-platform script generation (pip/uv/conda)
+│   └── virtualenv_manager.py  # Virtual environment management
+├── resolution/                 # Resolution engine
+│   ├── fast_resolver.py       # Fast uv-based resolution
+│   └── self_healing.py        # AI-powered conflict resolution (3 attempts, fallback strategies)
+├── llm/                        # LLM abstraction layer
+│   ├── client.py              # LiteLLM wrapper (with tenacity retry)
+│   ├── prompts.py             # All prompts
+│   └── parser.py              # Response parsing
+├── tools/                      # Tools for agents
+│   ├── package_lookup.py      # PyPI/Conda lookup
+│   └── serper_search.py       # Web search (wired into DependencyResolver)
+├── ui/                         # Terminal UI
+│   └── console.py             # Rich console with timestamps
+└── utils/                      # Utilities
+    ├── __init__.py
+    ├── sanitize.py            # Shell input sanitization (shlex.quote)
+    └── bash_executor.py       # Safe subprocess execution (no shell=True)
 ```
 
 ---
@@ -72,87 +82,106 @@ Users can describe their package needs in plain English. For example:
 - "I need tensorflow with GPU support and scikit-learn for a data science project"
 - "Set up a fastapi web server with uvicorn and sqlalchemy"
 
-### 2. Multi-Agent Pipeline
-Four specialized AI agents work together in a sequential workflow:
+### 2. Hardware-Aware Installation
+- Detects GPU/CUDA automatically
+- Optimizes PyTorch installation for detected hardware
+- Supports CPU-only mode for testing
 
-#### a) NLP Agent (`nlp_agent.py`)
-- Parses user input to extract package names
-- Determines environment type (pip/conda)
-- Identifies Python version requirements
-- Extracts version constraints
+### 3. Self-Healing Resolution
+When installation fails, Envio:
+1. Detects the error
+2. Checks for duplicate errors (hash-based deduplication)
+3. Applies fallback strategies:
+   - Relax version constraints
+   - Find alternative packages
+   - Skip optional dependencies
+4. Validates fixes using FastResolver
+5. Retries up to 3 times
 
-#### b) Dependency Resolution Agent (`dependency_resolution_agent.py`)
-- Looks up packages on PyPI and Conda
-- Resolves package dependencies automatically
-- Uses web search (Serper) as fallback when package info is unavailable
+### 4. Environment Management
+- `envio list` - List all virtual environments
+- `envio activate` - Show activation command
+- `envio remove` - Uninstall packages from environment
 
-#### c) Command Construction Agent (`command_construction_agent.py`)
-- Generates appropriate installation commands
-- Handles both pip and conda syntax
-- Includes version pinning when specified
+### 5. Import-to-Package Mapping
+- Dynamic PyPI lookup for imports (cv2 → opencv-python, PIL → Pillow)
+- Local caching for performance
+- No hardcoded mappings
 
-#### d) Bash File Generator Agent (`bash_file_generator_agent.py`)
-- Creates executable bash shell scripts
-- Includes environment setup (virtualenv/conda env)
-- Handles error checking and validation
+### 6. Cross-Platform Support
+- Windows (PowerShell/CMD)
+- Linux (Bash)
+- macOS (Bash/Zsh)
 
-### 3. Package Lookup
-- Checks PyPI API for package information
-- Checks Conda API for package information
-- Returns package metadata (version, dependencies, description)
+---
 
-### 4. Dual Environment Support
-- Supports **pip** environments
-- Supports **conda** environments
-- User can specify preference in natural language
+## CLI Commands
 
-### 5. Automated Script Execution
-- Runs setup in tmux session for isolation
-- Creates timestamped log files for each setup
-- Provides real-time feedback to user
+### `envio doctor`
+Show system hardware profile and configuration.
 
-### 6. Logging
-- Creates timestamped log files for each setup
-- Tracks all agent interactions
-- Records command execution results
+### `envio init`
+Scan current directory and set up environment from detected files.
+
+### `envio prompt`
+Set up environment from natural language prompt.
+
+```bash
+envio prompt "ML environment with pytorch" --name my-env --path ~/envs
+envio prompt "web app with fastapi" --env-type pip --cpu-only
+envio prompt "train model with pytorch" --optimize-for training
+```
+
+### `envio install`
+Install packages directly.
+
+```bash
+envio install requests flask numpy
+envio install torch torchvision --env-type pip --name ml-env
+envio install torch transformers --optimize-for training
+```
+
+### `envio list`
+List all virtual environments.
+
+```bash
+envio list
+envio list --path /path/to/envs
+```
+
+### `envio activate`
+Show activation command for a virtual environment.
+
+```bash
+envio activate --env my-env
+envio activate --path /path/to/.venv
+```
+
+### `envio remove`
+Remove packages from a virtual environment.
+
+```bash
+envio remove numpy pandas --env my-env
+envio remove requests --path /path/to/.venv
+```
 
 ---
 
 ## Workflow
 
 ```
-User Input (Natural Language)
+User Input (Natural Language or Package List)
         ↓
     NLP Agent (Extract packages, env type, versions)
         ↓
-Dependency Resolution Agent (PyPI/Conda lookup + Serper search)
+Dependency Resolution Agent (PyPI lookup + Serper search fallback)
         ↓
-Command Construction Agent (Generate pip/conda commands)
+Command Construction Agent (Generate pip/conda/uv commands)
         ↓
-Bash File Generator Agent (Create shell script)
+Script Generator (Create cross-platform setup script)
         ↓
-Execute in tmux session (with user input for path/name)
+Execute script (with self-healing retry on failure)
 ```
-
----
-
-## Usage Example
-
-```bash
-# Run the main script
-python main.py
-
-# Enter your request in natural language:
-# "I need a data science environment with pandas, numpy, matplotlib and scikit-learn"
-```
-
-The system will:
-1. Parse your request and identify the packages
-2. Look up each package on PyPI/Conda
-3. Resolve any dependencies
-4. Generate appropriate installation commands
-5. Create a bash script
-6. Execute the script in a tmux session
 
 ---
 
@@ -162,66 +191,44 @@ The system will:
 Create a `.env` file with the following:
 
 ```env
+# Required for AI features
 OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional: For web search fallback
 SERPER_API_KEY=your_serper_api_key_here
+
+# Optional: LLM configuration
+ENVIO_LLM_MODEL=gpt-4o-mini
+ENVIO_LLM_API_KEY=your_api_key_here
+ENVIO_LLM_API_BASE=http://localhost:11434/v1  # For local models
 ```
 
 ### Requirements
 Install dependencies:
 ```bash
-pip install -r requirements.txt
+uv pip install -e .
 ```
 
 ---
 
-## Documentation Files
+## Testing
 
-### README.md
-Brief 4-line project description.
+```bash
+# Run all tests
+uv run pytest
 
-### ROADMAP.md
-Comprehensive 6-phase development plan:
-- **Phase 1**: Foundation & Infrastructure (gitignore, packaging, CI/CD)
-- **Phase 2**: Code Quality & Testing (linting, typing, testing)
-- **Phase 3**: Refactoring & Architecture (DI, error handling)
-- **Phase 4**: Quick Win Features (dry-run, import, templates)
-- **Phase 5**: Medium-Term Features (Docker, security scanning, history)
-- **Phase 6**: Long-Term Vision (web UI, VS Code extension, plugins)
+# Run tests with verbose output
+uv run pytest -v
 
-### IMPROVEMENTS.md
-Detailed analysis of:
-- Critical infrastructure gaps
-- Code quality improvements needed
-- Architecture improvements
-- Security improvements
-- Short/medium/long-term features
-- Dependency cleanup recommendations
+# Run specific test module
+uv run pytest src/tests/test_analysis/test_import_analyzer.py
 
----
-
-## Current Status and Areas for Improvement
-
-### What's Working
-- ✅ Functional multi-agent AI pipeline for environment creation
-- ✅ Support for both pip and conda
-- ✅ Package lookup from PyPI/Conda
-- ✅ Web search fallback via Serper
-- ✅ Automated bash script generation
-
-### Areas Needing Improvement
-- ❌ No `.gitignore` file
-- ❌ No proper Python packaging (`pyproject.toml` missing)
-- ❌ No tests (0% coverage)
-- ❌ No CI/CD setup
-- ❌ Large dependency list (262 packages, many unused)
-- ❌ No type hints
-- ❌ No logging (uses `print()` statements)
-- ❌ Large `main.py` (250 lines) that should be refactored
-- ❌ `.env` file committed to repository (security risk)
-- ❌ Minimal README documentation
+# Run linter
+uv run ruff check src/
+```
 
 ---
 
 ## License
 
-Not specified in the repository.
+MIT License - see [LICENSE](LICENSE) for details.
