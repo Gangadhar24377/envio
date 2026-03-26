@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import re
+import shlex
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from envio.core.system_profiler import OSType, SystemProfiler
+from envio.utils.sanitize import sanitize_package_name
 
 if TYPE_CHECKING:
     from envio.core.system_profiler import ShellType
@@ -144,6 +147,16 @@ pip install {packages_str}
             package_manager: pip, conda, or uv
         """
         env_name = Path(venv_path).name
+        safe_venv_path = venv_path  # Use original path - don't sanitize drive letters
+
+        # Sanitize package names
+        safe_packages = []
+        for pkg in packages:
+            try:
+                safe_packages.append(sanitize_package_name(pkg))
+            except ValueError:
+                # Skip invalid package names
+                continue
 
         if package_manager == "conda":
             activation = f"""
@@ -151,7 +164,8 @@ pip install {packages_str}
 # conda activate {env_name}
 """
             install_block = "\n".join(
-                f"    conda run -n {env_name} pip install {pkg}" for pkg in packages
+                f"    conda run -n {env_name} pip install {pkg}"
+                for pkg in safe_packages
             )
             env_setup = f"""
     # Create conda environment
@@ -164,20 +178,22 @@ pip install {packages_str}
             env_setup = f"""
     # Create virtual environment
     Write-Host "Creating virtual environment..."
-    python -m venv "{venv_path}"
+    python -m venv "{safe_venv_path}"
 
     # Activate virtual environment
     Write-Host "Activating virtual environment..."
-    & "{venv_path}\\Scripts\\Activate.ps1"
+    & "{safe_venv_path}\\Scripts\\Activate.ps1"
 """
             if package_manager == "uv":
                 install_block = "\n".join(
-                    f'    uv pip install --python "{venv_path}\\Scripts\\python.exe" {pkg}'
-                    for pkg in packages
+                    f'    uv pip install --python "{safe_venv_path}\\Scripts\\python.exe" {pkg}'
+                    for pkg in safe_packages
                 )
                 install_note = "# Using uv for fast installation"
             else:
-                install_block = "\n".join(f"    pip install {pkg}" for pkg in packages)
+                install_block = "\n".join(
+                    f"    pip install {pkg}" for pkg in safe_packages
+                )
                 install_note = "# Using pip for installation"
 
         return f"""# Envio Environment Setup Script (PowerShell)
@@ -269,12 +285,22 @@ source {path_str}/bin/activate
         if not packages:
             return ""
 
+        # Sanitize package names
+        from envio.utils.sanitize import sanitize_packages
+
+        try:
+            safe_packages = sanitize_packages(packages)
+        except ValueError:
+            # If any package name is invalid, fall back to original behavior
+            # but this should be validated upstream
+            safe_packages = [shlex.quote(pkg) for pkg in packages]
+
         if package_manager == "conda":
             return f"""# Install packages using conda
-conda install -y {" ".join(packages)}
+conda install -y {" ".join(safe_packages)}
 """
         else:
-            packages_str = " ".join(packages)
+            packages_str = " ".join(safe_packages)
             return f"""# Upgrade pip and install packages
 pip install --upgrade pip
 pip install {packages_str}
@@ -323,13 +349,31 @@ echo "Activating virtual environment..."
 source "{path_str}/bin/activate"
 """
             if package_manager == "uv":
+                # Sanitize package names
+                from envio.utils.sanitize import sanitize_packages
+
+                try:
+                    safe_packages = sanitize_packages(packages)
+                except ValueError:
+                    # If any package name is invalid, fall back to quoting each package
+                    safe_packages = [shlex.quote(pkg) for pkg in packages]
+
                 install_lines = "\n".join(
                     f"uv pip install --python {venv_path}/bin/python {pkg}"
-                    for pkg in packages
+                    for pkg in safe_packages
                 )
                 install_note = "# Using uv for fast installation"
             else:
-                install_lines = "\n".join(f"pip install {pkg}" for pkg in packages)
+                # Sanitize package names
+                from envio.utils.sanitize import sanitize_packages
+
+                try:
+                    safe_packages = sanitize_packages(packages)
+                except ValueError:
+                    # If any package name is invalid, fall back to quoting each package
+                    safe_packages = [shlex.quote(pkg) for pkg in packages]
+
+                install_lines = "\n".join(f"pip install {pkg}" for pkg in safe_packages)
                 install_note = "# Using pip for installation"
 
         return f"""#!/bin/bash

@@ -1,14 +1,16 @@
 """Bash Executor Utility."""
 
+import shlex
 import subprocess
 
 
 def execute_bash(command: str, timeout: int | None = None) -> tuple[int, str, str]:
     """Execute a bash command and return (returncode, stdout, stderr)."""
     try:
+        # Split the command string into a list for safe execution without shell
+        args = shlex.split(command)
         result = subprocess.run(
-            command,
-            shell=True,
+            args,
             capture_output=True,
             text=True,
             timeout=timeout,
