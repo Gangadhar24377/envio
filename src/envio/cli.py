@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import time
 import traceback
 from pathlib import Path
@@ -392,33 +393,8 @@ def init(env_type: str | None, verbose: bool) -> None:
                 except Exception:
                     pass
 
-            # Filter out standard library
-            stdlib = {
-                "os",
-                "sys",
-                "re",
-                "json",
-                "time",
-                "datetime",
-                "pathlib",
-                "collections",
-                "itertools",
-                "functools",
-                "typing",
-                "abc",
-                "io",
-                "logging",
-                "unittest",
-                "argparse",
-                "shutil",
-                "glob",
-                "pickle",
-                "copy",
-                "math",
-                "random",
-                "string",
-                "textwrap",
-            }
+            # Filter out standard library using dynamic detection
+            stdlib = sys.stdlib_module_names
             third_party = sorted(imports - stdlib)
 
             if third_party:
