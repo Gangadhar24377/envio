@@ -125,6 +125,17 @@ def _analyze_directory(
         console.print_warning("No third-party packages detected")
         return
 
+    # Map import names to PyPI package names dynamically
+    from envio.analysis.package_mapping import find_package_for_import
+
+    mapped_packages = []
+    for imp in third_party:
+        pkg_name = find_package_for_import(imp)
+        mapped_packages.append(pkg_name)
+        if pkg_name != imp:
+            console.print_info(f"  {imp} → {pkg_name}")
+
+    third_party = mapped_packages
     console.print_packages_table(third_party, "Detected Third-Party Packages")
 
     # Detect deprecated patterns

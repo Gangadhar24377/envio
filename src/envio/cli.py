@@ -515,14 +515,24 @@ def init(env_type: str | None, verbose: bool) -> None:
             # Filter out standard library
             import sys
 
+            from envio.analysis.package_mapping import find_package_for_import
+
             stdlib = set(sys.stdlib_module_names)
             third_party = sorted(imports - stdlib)
 
             if third_party:
-                console.print_info(f"Found {len(third_party)} third-party imports")
+                # Map import names to PyPI package names dynamically
+                mapped_packages = []
+                for imp in third_party:
+                    pkg_name = find_package_for_import(imp)
+                    mapped_packages.append(pkg_name)
+                    if pkg_name != imp:
+                        console.print_info(f"  {imp} → {pkg_name}")
+
+                console.print_info(f"Found {len(mapped_packages)} third-party imports")
                 detected = {
                     "source": "detected from imports",
-                    "packages": third_party,
+                    "packages": mapped_packages,
                     "env_type": "uv",
                 }
             else:
