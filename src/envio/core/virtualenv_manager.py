@@ -212,3 +212,40 @@ class VirtualEnvManager:
 
         except Exception:
             return False, []
+
+    def uninstall_packages(
+        self,
+        venv_path: Path,
+        packages: list[str],
+    ) -> tuple[bool, str, str]:
+        """Uninstall packages from a virtual environment.
+
+        Args:
+            venv_path: Path to the virtual environment
+            packages: List of package names to uninstall
+
+        Returns:
+            Tuple of (success, stdout, stderr)
+        """
+        python_path = self.get_python_path(venv_path)
+
+        try:
+            cmd = [
+                str(python_path),
+                "-m",
+                "pip",
+                "uninstall",
+                "-y",
+            ] + packages
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
+            return result.returncode == 0, result.stdout, result.stderr
+
+        except Exception as e:
+            return False, "", str(e)
