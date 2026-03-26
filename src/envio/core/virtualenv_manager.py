@@ -271,6 +271,15 @@ class VirtualEnvManager:
         """
         python_path = self.get_python_path(venv_path)
 
+        try:
+            cmd = [
+                str(python_path),
+                "-m",
+                "pip",
+                "uninstall",
+                "-y",
+            ] + packages
+
         if not python_path.exists():
             return False, "", f"Python not found at {python_path}"
 
@@ -282,6 +291,8 @@ class VirtualEnvManager:
                 text=True,
                 timeout=120,
             )
+
+            return result.returncode == 0, result.stdout, result.stderr
 
             return (
                 result.returncode == 0,
