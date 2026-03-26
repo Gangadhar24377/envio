@@ -10,6 +10,8 @@ from pathlib import Path
 
 import click
 
+from envio import __version__
+
 VALID_PACKAGE_MANAGERS = ["pip", "conda", "uv"]
 
 
@@ -106,6 +108,9 @@ def _resolve_and_install(
     preferences: dict | None,
     profile,
     console,
+    original_command: str = "envio install",
+    dry_run: bool = False,
+    skip_confirm: bool = False,
 ) -> bool:
     """Resolve dependencies and install environment with self-healing."""
     resolver = _get_dependency_resolver()
@@ -152,6 +157,21 @@ def _resolve_and_install(
             script_content,
             Path(env_path) / f"envio_setup_{env_name}",
         )
+
+        # Dry run: show what would happen without executing
+        if dry_run:
+            console.print_info("[DRY RUN] Would execute the following script:")
+            console.print_code_block(script_content, "bash")
+            console.print_info(f"[DRY RUN] Script saved to: {script_path}")
+            console.print_info("[DRY RUN] No changes were made to your system.")
+            return True
+
+        # Interactive confirmation
+        if not skip_confirm:
+            if not console.confirm("Proceed with installation?", default=True):
+                console.print_warning("Installation cancelled by user.")
+                console.print_info(f"Generated script saved to: {script_path}")
+                return False
 
         # Execute script
         console.print_info("Executing installation...")
@@ -433,6 +453,7 @@ def init(env_type: str | None, verbose: bool) -> None:
             preferences={},
             profile=profile,
             console=console,
+            original_command="envio init",
         )
 
     except Exception as e:
@@ -454,6 +475,8 @@ def init(env_type: str | None, verbose: bool) -> None:
     type=click.Choice(["training", "inference", "development"]),
     help="Optimize packages for specific use case",
 )
+@click.option("--dry-run", is_flag=True, help="Preview without making changes")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def prompt(
     prompt_text: tuple[str, ...],
@@ -462,12 +485,22 @@ def prompt(
     env_type: str,
     cpu_only: bool,
     optimize_for: str | None,
+    dry_run: bool,
+    yes: bool,
     verbose: bool,
 ) -> None:
     """Set up environment from natural language prompt."""
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Prompt", "Natural language environment setup")
+
+    # Check for API key
+    api_key = os.getenv("ENVIO_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        console.print_warning("No API key found. Falling back to PyPI-only resolution.")
+        console.print_info(
+            "Set ENVIO_LLM_API_KEY or OPENAI_API_KEY for AI-powered features."
+        )
 
     profiler = _get_profiler()
     profile = profiler.profile()
@@ -511,6 +544,9 @@ def prompt(
             preferences=preferences,
             profile=profile,
             console=console,
+            original_command=f"envio prompt '{user_input}'",
+            dry_run=dry_run,
+            skip_confirm=yes,
         )
 
     except Exception as e:
@@ -573,6 +609,8 @@ def doctor(verbose: bool) -> None:
     type=click.Choice(["training", "inference", "development"]),
     help="Optimize packages for specific use case",
 )
+@click.option("--dry-run", is_flag=True, help="Preview without making changes")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def install(
     packages: tuple[str, ...],
@@ -581,6 +619,8 @@ def install(
     path: str | None,
     cpu_only: bool,
     optimize_for: str | None,
+    dry_run: bool,
+    yes: bool,
     verbose: bool,
 ) -> None:
     """Install packages directly."""
@@ -607,6 +647,15 @@ def install(
         env_name = name or f"env_{int(time.time())}"
         env_path = path or str(Path.home() / "Documents" / "envs")
 
+        # Build the command string for registry
+        cmd_parts = ["envio install"] + list(pkg_list)
+        if env_type != "uv":
+            cmd_parts.append(f"--env-type {env_type}")
+        if cpu_only:
+            cmd_parts.append("--cpu-only")
+        if optimize_for:
+            cmd_parts.append(f"--optimize-for {optimize_for}")
+
         _resolve_and_install(
             packages=pkg_list,
             env_path=env_path,
@@ -615,7 +664,477 @@ def install(
             preferences=preferences,
             profile=profile,
             console=console,
+            original_command=" ".join(cmd_parts),
+            dry_run=dry_run,
+            skip_confirm=yes,
         )
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+@cli.command()
+@click.option("--name", "-n", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Environment path")
+@click.option(
+    "--output", "-o", default=None, help="Output file path (default: envio.lock)"
+)
+@click.option(
+    "--format",
+    "fmt",
+    default="json",
+    type=click.Choice(["json", "text"]),
+    help="Output format",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def lock(
+    name: str | None,
+    path: str | None,
+    output: str | None,
+    fmt: str,
+    verbose: bool,
+) -> None:
+    """Generate a lockfile for reproducible environments."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Lock", "Generate reproducible lockfile")
+
+    try:
+        import json
+        import platform
+        from datetime import datetime
+
+        from envio.core.virtualenv_manager import VirtualEnvManager
+
+        manager = VirtualEnvManager()
+
+        # Find the environment
+        env_path = Path(path) if path else None
+        if not env_path:
+            # Search in default location
+            default_base = Path.home() / "Documents" / "envs"
+            if name:
+                env_path = default_base / name
+            else:
+                # Search current directory
+                env_path = Path.cwd() / ".venv"
+
+        if not manager.exists(env_path):
+            console.print_error(f"Virtual environment not found at: {env_path}")
+            return
+
+        console.print_info(f"Locking environment: {env_path}")
+
+        # Get installed packages with versions
+        success, packages = manager.get_installed_packages_with_versions(env_path)
+
+        if not success:
+            console.print_error("Failed to get installed packages")
+            return
+
+        if not packages:
+            console.print_warning("No packages installed in this environment")
+            return
+
+        console.print_info(f"Found {len(packages)} packages")
+
+        # Get hardware profile
+        profiler = _get_profiler()
+        profile = profiler.profile()
+
+        # Generate lockfile content
+        lock_data = {
+            "version": "1.0",
+            "generated_by": f"envio {__version__}",
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "package_manager": "pip",
+            "python_version": platform.python_version(),
+            "environment_name": name or env_path.name,
+            "environment_path": str(env_path),
+            "hardware": {
+                "gpu": profile.gpu.name if profile.gpu.available else None,
+                "cuda": profile.gpu.cuda_version if profile.gpu.available else None,
+            },
+            "packages": packages,
+        }
+
+        # Determine output file
+        output_path = Path(output) if output else Path("envio.lock")
+
+        if fmt == "json":
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(lock_data, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+        else:
+            # Text format (requirements.txt style)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(f"# Generated by envio {__version__}\n")
+                f.write(f"# Date: {lock_data['generated_at']}\n")
+                f.write(f"# Python: {platform.python_version()}\n")
+                if profile.gpu.available:
+                    f.write(f"# GPU: {profile.gpu.name}\n")
+                f.write("\n")
+                for pkg in sorted(packages, key=lambda x: x["name"].lower()):
+                    f.write(f"{pkg['name']}=={pkg['version']}\n")
+
+        console.print_success(f"Lockfile saved to: {output_path}")
+        console.print_info(f"Locked {len(packages)} packages")
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+@cli.command()
+@click.option("--name", "-n", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Environment path")
+@click.option("--output", "-o", default=None, help="Output file path")
+@click.option(
+    "--format",
+    "fmt",
+    default="requirements",
+    type=click.Choice(["requirements", "dockerfile", "devcontainer"]),
+    help="Export format",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def export(
+    name: str | None,
+    path: str | None,
+    output: str | None,
+    fmt: str,
+    verbose: bool,
+) -> None:
+    """Export environment configuration to various formats."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Export", f"Export to {fmt} format")
+
+    try:
+        import platform
+
+        from envio.core.virtualenv_manager import VirtualEnvManager
+
+        manager = VirtualEnvManager()
+
+        # Find the environment
+        env_path = Path(path) if path else None
+        if not env_path:
+            # Search in default location
+            default_base = Path.home() / "Documents" / "envs"
+            if name:
+                env_path = default_base / name
+            else:
+                # Search current directory
+                env_path = Path.cwd() / ".venv"
+
+        if not manager.exists(env_path):
+            console.print_error(f"Virtual environment not found at: {env_path}")
+            return
+
+        console.print_info(f"Exporting environment: {env_path}")
+
+        # Get installed packages with versions
+        success, packages = manager.get_installed_packages_with_versions(env_path)
+
+        if not success:
+            console.print_error("Failed to get installed packages")
+            return
+
+        if not packages:
+            console.print_warning("No packages installed in this environment")
+            return
+
+        python_version = platform.python_version()
+        env_name = name or env_path.name
+
+        # Generate content based on format
+        if fmt == "requirements":
+            content = _generate_requirements_export(packages, __version__)
+            default_output = "requirements.txt"
+        elif fmt == "dockerfile":
+            content = _generate_dockerfile_export(packages, python_version, __version__)
+            default_output = "Dockerfile"
+        elif fmt == "devcontainer":
+            content = _generate_devcontainer_export(
+                packages, python_version, env_name, __version__
+            )
+            default_output = "devcontainer.json"
+        else:
+            console.print_error(f"Unknown format: {fmt}")
+            return
+
+        # Determine output file
+        output_path = Path(output) if output else Path(default_output)
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        console.print_success(f"Exported to: {output_path}")
+        console.print_info(f"Format: {fmt}")
+        console.print_info(f"Packages: {len(packages)}")
+
+    except Exception as e:
+        console.print_error(f"Error: {e}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+def _generate_requirements_export(packages: list[dict], version: str) -> str:
+    """Generate requirements.txt content."""
+    lines = [f"# Generated by envio {version}\n"]
+    for pkg in sorted(packages, key=lambda x: x["name"].lower()):
+        lines.append(f"{pkg['name']}=={pkg['version']}\n")
+    return "".join(lines)
+
+
+def _generate_dockerfile_export(
+    packages: list[dict], python_version: str, version: str
+) -> str:
+    """Generate Dockerfile content."""
+    major_minor = ".".join(python_version.split(".")[:2])
+    pkg_list = " ".join(
+        f"{pkg['name']}=={pkg['version']}"
+        for pkg in sorted(packages, key=lambda x: x["name"].lower())
+    )
+
+    return f"""# Generated by envio {version}
+FROM python:{major_minor}-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir {pkg_list}
+
+# Copy application code
+COPY . .
+
+CMD ["python"]
+"""
+
+
+def _generate_devcontainer_export(
+    packages: list[dict],
+    python_version: str,
+    env_name: str,
+    version: str,
+) -> str:
+    """Generate devcontainer.json content."""
+    import json
+
+    pkg_list = " ".join(
+        f"{pkg['name']}=={pkg['version']}"
+        for pkg in sorted(packages, key=lambda x: x["name"].lower())
+    )
+
+    devcontainer = {
+        "name": env_name,
+        "image": f"mcr.microsoft.com/devcontainers/python:{'.'.join(python_version.split('.')[:2])}",
+        "postCreateCommand": f"pip install {pkg_list}",
+        "customizations": {
+            "vscode": {
+                "extensions": [
+                    "ms-python.python",
+                    "ms-python.vscode-pylance",
+                ],
+                "settings": {
+                    "python.defaultInterpreterPath": "/usr/local/bin/python",
+                },
+            }
+        },
+    }
+
+    return json.dumps(devcontainer, indent=2) + "\n"
+
+
+@cli.command()
+@click.option("--name", "-n", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Environment path")
+@click.option(
+    "--severity",
+    default=None,
+    type=click.Choice(["low", "medium", "high", "critical"]),
+    help="Minimum severity to report",
+)
+@click.option("--fix", is_flag=True, help="Auto-fix vulnerabilities by upgrading")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def audit(
+    name: str | None,
+    path: str | None,
+    severity: str | None,
+    fix: bool,
+    verbose: bool,
+) -> None:
+    """Scan environment for known vulnerabilities."""
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Audit", "Security vulnerability scan")
+
+    try:
+        import shutil
+        import subprocess
+
+        from envio.core.virtualenv_manager import VirtualEnvManager
+
+        # Check if pip-audit is available
+        if not shutil.which("pip-audit"):
+            console.print_error("pip-audit is not installed.")
+            console.print_info("Install it with: pip install pip-audit")
+            console.print_info("Or: uv pip install pip-audit")
+            return
+
+        manager = VirtualEnvManager()
+
+        # Find the environment
+        env_path = Path(path) if path else None
+        if not env_path:
+            # Search in default location
+            default_base = Path.home() / "Documents" / "envs"
+            if name:
+                env_path = default_base / name
+            else:
+                # Search current directory
+                env_path = Path.cwd() / ".venv"
+
+        if not manager.exists(env_path):
+            console.print_error(f"Virtual environment not found at: {env_path}")
+            return
+
+        python_path = manager.get_python_path(env_path)
+        console.print_info(f"Auditing environment: {env_path}")
+
+        # Run pip-audit
+        console.print_info("Scanning for vulnerabilities...")
+        with console.spinner("Running pip-audit..."):
+            result = subprocess.run(
+                [
+                    str(python_path),
+                    "-m",
+                    "pip_audit",
+                    "--format",
+                    "json",
+                    "--desc",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
+        if result.returncode == 0:
+            console.print_success("No vulnerabilities found!")
+            return
+
+        # Parse and display vulnerabilities
+        import json
+
+        try:
+            audit_data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            # pip-audit might return non-zero even on success
+            if "No known vulnerabilities found" in result.stdout:
+                console.print_success("No vulnerabilities found!")
+                return
+            console.print_error("Failed to parse pip-audit output")
+            if verbose:
+                console.print_code_block(result.stderr, "text")
+            return
+
+        vulnerabilities = audit_data.get("dependencies", [])
+        vuln_list = []
+        severity_levels = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        min_severity = severity_levels.get(severity, 0) if severity else 0
+
+        for dep in vulnerabilities:
+            dep_vulns = dep.get("vulns", [])
+            for vuln in dep_vulns:
+                vuln_severity = vuln.get("severity", "unknown").lower()
+                vuln_level = severity_levels.get(vuln_severity, 0)
+
+                if vuln_level >= min_severity:
+                    vuln_list.append(
+                        {
+                            "package": dep.get("name", "unknown"),
+                            "version": dep.get("version", "unknown"),
+                            "vuln_id": vuln.get("id", "unknown"),
+                            "description": vuln.get("description", "No description"),
+                            "severity": vuln_severity,
+                            "fix_version": vuln.get("fix_versions", ["unknown"])[0]
+                            if vuln.get("fix_versions")
+                            else "unknown",
+                        }
+                    )
+
+        if not vuln_list:
+            console.print_success("No vulnerabilities above threshold!")
+            return
+
+        # Display vulnerabilities
+        console.print_error(f"Found {len(vuln_list)} vulnerabilities:")
+        console._safe_print("")
+
+        from rich.table import Table
+
+        table = Table(title="Vulnerabilities Found")
+        table.add_column("Package", style="cyan")
+        table.add_column("Version", style="white")
+        table.add_column("CVE ID", style="yellow")
+        table.add_column("Severity", style="red")
+        table.add_column("Fix Version", style="green")
+
+        for vuln in vuln_list:
+            severity_style = {
+                "critical": "[bold red]CRITICAL[/]",
+                "high": "[red]HIGH[/]",
+                "medium": "[yellow]MEDIUM[/]",
+                "low": "[dim]LOW[/]",
+            }.get(vuln["severity"], vuln["severity"])
+
+            table.add_row(
+                vuln["package"],
+                vuln["version"],
+                vuln["vuln_id"],
+                severity_style,
+                vuln["fix_version"],
+            )
+
+        console._safe_print(table)
+
+        # Offer to fix
+        if fix and vuln_list:
+            console._safe_print("")
+            fixable = [v for v in vuln_list if v["fix_version"] != "unknown"]
+            if fixable:
+                console.print_info(f"Fixing {len(fixable)} packages...")
+                for vuln in fixable:
+                    pkg = vuln["package"]
+                    fix_ver = vuln["fix_version"]
+                    console.print_info(f"  Upgrading {pkg} to {fix_ver}")
+
+                # Run pip install with upgrades
+                upgrade_cmd = [
+                    str(python_path),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                ] + [f"{v['package']}>={v['fix_version']}" for v in fixable]
+                upgrade_result = subprocess.run(
+                    upgrade_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+
+                if upgrade_result.returncode == 0:
+                    console.print_success("Vulnerabilities fixed!")
+                else:
+                    console.print_error("Some fixes failed")
+                    if verbose:
+                        console.print_code_block(upgrade_result.stderr, "text")
+            else:
+                console.print_warning("No automatic fixes available")
 
     except Exception as e:
         console.print_error(f"Error: {e}")

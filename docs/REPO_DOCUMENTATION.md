@@ -2,226 +2,179 @@
 
 ## Overview
 
-**Envio** is an AI-powered event and package manager designed to automate Python development environment setup. It uses artificial intelligence (LLMs and multi-agent systems) to understand natural language package management requests, resolve package dependencies automatically, generate appropriate installation commands (for pip or conda), create executable bash scripts to set up entire development environments, and run the setup in an isolated tmux session.
+**Envio** is an AI-powered Python environment manager that combines the speed of `uv` with intelligent dependency resolution. It provides automated environment setup, self-healing dependency resolution, hardware-aware optimization, and cross-platform support.
 
-Think of it as having an AI assistant that handles all your dependency management headaches - you just tell it what packages you need, and it handles the rest.
+## Key Features
 
----
-
-## Tech Stack and Technologies
-
-### Core Framework
-- **Python** - Main programming language
-- **CrewAI** - Multi-agent AI framework for orchestrating the workflow
-- **LangChain** - AI/LLM integration framework
-- **OpenAI GPT-4o-mini** - LLM for natural language understanding and generation
-
-### Key Dependencies
-| Category | Packages |
-|----------|----------|
-| AI/LLM | `crewai`, `langchain`, `langchain-openai`, `openai`, `litellm` |
-| Web Frameworks | `fastapi`, `uvicorn` |
-| Data Science/ML | `tensorflow`, `keras`, `scikit-learn`, `numpy`, `pandas`, `matplotlib` |
-| Vector Databases | `chromadb`, `lancedb`, `qdrant-client` |
-| Utilities | `python-dotenv`, `requests`, `httpx`, `pyyaml` |
-| Testing | `pytest` |
-| Cloud APIs | `google-cloud-aiplatform`, `boto3` |
-
-### External Services
-- **OpenAI API** - For LLM processing
-- **Serper API** - For web search (fallback package lookup)
-- **PyPI** - Python package repository lookup
-- **Conda** - Alternative package manager support
-
----
+- **Fast Resolution**: Uses `uv` for millisecond dependency resolution
+- **Self-Healing**: AI-powered conflict resolution when dependencies fail (3 attempts)
+- **Hardware-Aware**: Detects GPU/CUDA/Apple Silicon MPS and optimizes packages accordingly
+- **Cross-Platform**: Works on Windows, Linux, and macOS (including Apple Silicon)
+- **Beautiful TUI**: Rich terminal output with timestamps, tables, and progress bars
+- **Optimization Modes**: Optimize for training, inference, or development
+- **Multi-Platform Support**: pip, uv, and conda package managers
+- **Environment Registry**: Tracks all envio-created environments in `~/.envio/environments.json`
+- **Security Audit**: Scan environments for known vulnerabilities with `envio audit`
+- **Reproducible Lockfiles**: Generate lockfiles with `envio lock`
+- **Multiple Export Formats**: Export as requirements.txt, Dockerfile, or devcontainer.json
+- **Dry-Run Mode**: Preview changes before execution with `--dry-run`
+- **Interactive Confirmation**: Optional prompts before making changes
+- **Multi-Provider LLM**: Supports OpenAI and Ollama with auto-detection
 
 ## Directory Structure
 
 ```
-envio/
-├── .env                    # Environment variables (API keys)
-├── README.md               # Basic project description
-├── ROADMAP.md              # Development roadmap (6 phases)
-├── IMPROVEMENTS.md         # Detailed improvements & feature ideas
-├── requirements.txt        # Python dependencies (262 packages!)
-├── main.py                 # Main entry point (250 lines)
-├── setup_env.sh            # Example setup script
-├── agents/                 # AI agent implementations
-│   ├── __init__.py
-│   ├── nlp_agent.py               # Extracts package info from user input
-│   ├── dependency_resolution_agent.py  # Resolves package dependencies
-│   ├── command_construction_agent.py   # Generates installation commands
-│   └── bash_file_generator_agent.py    # Creates bash scripts
-├── tools/                  # Reusable tools for agents
-│   ├── __init__.py
-│   ├── package_lookup.py         # PyPI/Conda package lookup
-│   └── serper_search.py          # Web search fallback
-├── utils/                  # Utility functions
-│   ├── __init__.py
-│   └── bash_executor.py          # Bash script execution
-└── testing_env/            # Test environment
-    └── setup_env.sh        # Sample generated script
+src/envio/
+├── cli.py                      # CLI commands
+├── agents/                     # AI agents
+│   ├── nlp_agent.py           # NLP processing
+│   ├── dependency_resolution_agent.py  # Dependency resolution (with SelfHealingLoop)
+│   └── command_construction_agent.py   # Command generation
+├── core/                       # Core utilities
+│   ├── system_profiler.py     # System/hardware detection (NVIDIA CUDA, Apple Silicon MPS)
+│   ├── executor.py            # Script execution
+│   ├── script_generator.py    # Cross-platform script generation (pip/uv/conda)
+│   └── virtualenv_manager.py  # Virtual environment management
+├── resolution/                 # Resolution engine
+│   ├── fast_resolver.py       # Fast uv-based resolution
+│   └── self_healing.py        # AI-powered conflict resolution (3 attempts)
+├── llm/                        # LLM abstraction layer
+│   ├── client.py              # LiteLLM wrapper with OpenAI/Ollama auto-detection
+│   ├── prompts.py             # All prompts
+│   └── parser.py              # Response parsing
+├── tools/                      # Tools for agents
+│   ├── package_lookup.py      # PyPI/Conda lookup
+│   └── serper_search.py       # Web search
+└── ui/                         # Terminal UI
+    └── console.py             # Rich console with timestamps
 ```
 
----
+## Installation
 
-## Main Features and Functionality
-
-### 1. Natural Language Input
-Users can describe their package needs in plain English. For example:
-- "I need tensorflow with GPU support and scikit-learn for a data science project"
-- "Set up a fastapi web server with uvicorn and sqlalchemy"
-
-### 2. Multi-Agent Pipeline
-Four specialized AI agents work together in a sequential workflow:
-
-#### a) NLP Agent (`nlp_agent.py`)
-- Parses user input to extract package names
-- Determines environment type (pip/conda)
-- Identifies Python version requirements
-- Extracts version constraints
-
-#### b) Dependency Resolution Agent (`dependency_resolution_agent.py`)
-- Looks up packages on PyPI and Conda
-- Resolves package dependencies automatically
-- Uses web search (Serper) as fallback when package info is unavailable
-
-#### c) Command Construction Agent (`command_construction_agent.py`)
-- Generates appropriate installation commands
-- Handles both pip and conda syntax
-- Includes version pinning when specified
-
-#### d) Bash File Generator Agent (`bash_file_generator_agent.py`)
-- Creates executable bash shell scripts
-- Includes environment setup (virtualenv/conda env)
-- Handles error checking and validation
-
-### 3. Package Lookup
-- Checks PyPI API for package information
-- Checks Conda API for package information
-- Returns package metadata (version, dependencies, description)
-
-### 4. Dual Environment Support
-- Supports **pip** environments
-- Supports **conda** environments
-- User can specify preference in natural language
-
-### 5. Automated Script Execution
-- Runs setup in tmux session for isolation
-- Creates timestamped log files for each setup
-- Provides real-time feedback to user
-
-### 6. Logging
-- Creates timestamped log files for each setup
-- Tracks all agent interactions
-- Records command execution results
-
----
-
-## Workflow
-
-```
-User Input (Natural Language)
-        ↓
-    NLP Agent (Extract packages, env type, versions)
-        ↓
-Dependency Resolution Agent (PyPI/Conda lookup + Serper search)
-        ↓
-Command Construction Agent (Generate pip/conda commands)
-        ↓
-Bash File Generator Agent (Create shell script)
-        ↓
-Execute in tmux session (with user input for path/name)
-```
-
----
-
-## Usage Example
-
-```bash
-# Run the main script
-python main.py
-
-# Enter your request in natural language:
-# "I need a data science environment with pandas, numpy, matplotlib and scikit-learn"
-```
-
-The system will:
-1. Parse your request and identify the packages
-2. Look up each package on PyPI/Conda
-3. Resolve any dependencies
-4. Generate appropriate installation commands
-5. Create a bash script
-6. Execute the script in a tmux session
-
----
+1. Clone the repository
+2. Install with `pip install -e .` or `uv pip install -e .`
+3. Create a `.env` file with your OpenAI API key (or use Ollama)
+4. Activate the virtual environment
 
 ## Configuration
 
-### Environment Variables (`.env`)
-Create a `.env` file with the following:
+### OpenAI (Default)
 
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-SERPER_API_KEY=your_serper_api_key_here
-```
-
-### Requirements
-Install dependencies:
 ```bash
-pip install -r requirements.txt
+# In .env file
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# Optional: specify model (defaults to gpt-4o-mini)
+ENVIO_LLM_MODEL=gpt-4o-mini
 ```
 
----
+### Ollama (Local)
 
-## Documentation Files
+```bash
+# Ensure Ollama is running
+ollama serve
 
-### README.md
-Brief 4-line project description.
+# Pull a model (if not already)
+ollama pull llama3
 
-### ROADMAP.md
-Comprehensive 6-phase development plan:
-- **Phase 1**: Foundation & Infrastructure (gitignore, packaging, CI/CD)
-- **Phase 2**: Code Quality & Testing (linting, typing, testing)
-- **Phase 3**: Refactoring & Architecture (DI, error handling)
-- **Phase 4**: Quick Win Features (dry-run, import, templates)
-- **Phase 5**: Medium-Term Features (Docker, security scanning, history)
-- **Phase 6**: Long-Term Vision (web UI, VS Code extension, plugins)
+# In .env file - model is required for Ollama
+ENVIO_LLM_MODEL=llama3
 
-### IMPROVEMENTS.md
-Detailed analysis of:
-- Critical infrastructure gaps
-- Code quality improvements needed
-- Architecture improvements
-- Security improvements
-- Short/medium/long-term features
-- Dependency cleanup recommendations
+# Optional: custom host
+ENVIO_OLLAMA_HOST=http://localhost:11434
+```
 
----
+### Auto-Detection Logic
 
-## Current Status and Areas for Improvement
+Envio automatically detects which provider to use:
 
-### What's Working
-- ✅ Functional multi-agent AI pipeline for environment creation
-- ✅ Support for both pip and conda
-- ✅ Package lookup from PyPI/Conda
-- ✅ Web search fallback via Serper
-- ✅ Automated bash script generation
+1. If `OPENAI_API_KEY` is set → Uses OpenAI (default model: gpt-4o-mini)
+2. If Ollama is running → Uses Ollama (default model: llama3)
+3. If neither is available → Shows clear error message
 
-### Areas Needing Improvement
-- ❌ No `.gitignore` file
-- ❌ No proper Python packaging (`pyproject.toml` missing)
-- ❌ No tests (0% coverage)
-- ❌ No CI/CD setup
-- ❌ Large dependency list (262 packages, many unused)
-- ❌ No type hints
-- ❌ No logging (uses `print()` statements)
-- ❌ Large `main.py` (250 lines) that should be refactored
-- ❌ `.env` file committed to repository (security risk)
-- ❌ Minimal README documentation
+## Usage Examples
 
----
+```bash
+# System check (shows hardware profile including Apple Silicon)
+envio doctor
+
+# Initialize from existing files
+envio init
+
+# Natural language prompt
+envio prompt "web app with flask and postgres"
+
+# Direct package installation
+envio install requests flask numpy
+
+# Generate lockfile
+envio lock -n my-env
+
+# Export to different formats
+envio export -n my-env --format dockerfile
+
+# Security audit
+envio audit -n my-env --severity high
+```
+
+## Hardware Detection
+
+### NVIDIA GPU
+- Detects GPU name, VRAM, CUDA version via nvidia-smi
+- Auto-selects PyTorch index URL based on CUDA version
+- Recommends batch size and xformers based on VRAM
+
+### Apple Silicon
+- Dynamically detects chip model (M1/M2/M3/M4) via sysctl
+- Checks PyTorch MPS availability
+- Shows unified memory and macOS version
+- Works on arm64 architecture
+
+## Testing
+
+Run tests with `pytest`:
+```bash
+pytest src/tests/
+```
+
+## Test Commands
+
+```bash
+# Test LLM auto-detection (OpenAI)
+uv run python -c "from envio.llm import LLMConfig; c = LLMConfig.from_env(); print(f'Provider: {c.provider}, Model: {c.model}')"
+
+# Test LLM client chat
+uv run python -c "from envio.llm import LLMClient; c = LLMClient(); print(c.chat(user_prompt='Say hi').content)"
+
+# Test system profiler (NVIDIA)
+uv run python -c "from envio.core import SystemProfiler; p = SystemProfiler(); g = p.detect_gpu(); print(f'GPU: {g.name}, Backend: {g.compute_backend}')"
+
+# Test Ollama availability check
+uv run python -c "from envio.llm import is_ollama_available; print(f'Ollama running: {is_ollama_available()}')"
+
+# Test Ollama model listing
+uv run python -c "from envio.llm import list_ollama_models; print(f'Models: {list_ollama_models()}')"
+
+# Test full profile
+uv run python -c "from envio.core import SystemProfiler; print(SystemProfiler().profile())"
+
+# Run doctor command
+uv run envio doctor
+
+# Run install command
+uv run envio install requests flask
+
+# Run linting
+uv run ruff check src/envio/llm/client.py src/envio/core/system_profiler.py
+
+# Run tests
+uv run pytest src/tests/ -v
+```
+
+## CI/CD
+
+GitHub Actions workflow runs tests on Ubuntu, Windows, and macOS with Python 3.10, 3.11, and 3.12.
 
 ## License
 
-Not specified in the repository.
+MIT License
