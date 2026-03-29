@@ -7,7 +7,12 @@
 [![Downloads](https://img.shields.io/pypi/dm/envio)](https://pypi.org/project/envio/)
 </p>
 
-> AI-Powered Python Environment Manager that understands what you want, not just what you type.
+<p align="center">
+  <strong>The AI-Powered Python Environment Manager</strong><br />
+  <em>"It understands what you want, not just what you type."</em>
+</p>
+
+### Why Envio?
 Ever spent hours fixing dependency conflicts? Wish you could just tell your computer "I need a web app with Flask" and have everything just work? That's Envio.
 
 ## Why You'll Love Envio
