@@ -309,6 +309,25 @@ Options:
 - `--output, -o`: Output file path (default: `envio.lock`)
 - `--format`: Output format (`json` or `text`)
 
+#### `envio config`
+Manage envio configuration settings.
+
+```bash
+# Show current configuration
+envio config show
+
+# Set default directory for environments
+envio config set default_envs_dir ~/.envs
+
+# Set preferred package manager (pip, uv, or conda)
+envio config set preferred_package_manager uv
+
+# Unset a configuration value
+envio config unset default_envs_dir
+```
+
+Configuration is stored in `~/.envio/config.json`.
+
 #### `envio export`
 Export environment configuration to various formats.
 
@@ -727,7 +746,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Changelog
 
-### v0.3.0 (Phase 4 - Latest)
+### v0.1.0 (Phase 4 - Latest)
 - **New Command:**
   - `envio resurrect` - Resurrect dead Python projects by scanning code and inferring dependencies
 - **Package Validation:**
@@ -750,7 +769,7 @@ MIT License - see [LICENSE](LICENSE) for details.
   - Multi-location .env loading (cwd → project dir → ~/.envio/)
   - Auto-creates ~/.envio/ directory on first run
 
-### v0.2.0 (Phase 3)
+### v0.1.0 (Phase 3)
 - **New Commands:**
   - `envio lock` - Generate reproducible lockfiles (JSON or text format)
   - `envio export` - Export as requirements.txt, Dockerfile, or devcontainer.json
@@ -765,7 +784,7 @@ MIT License - see [LICENSE](LICENSE) for details.
   - Lockfiles include hardware context (GPU/CUDA)
   - Multiple export formats for different deployment scenarios
 
-### v0.1.0
+### v0.0.1
 - Initial release
 - CLI commands: doctor, init, install, prompt, list, remove, activate
 - AI-powered dependency resolution with re-validation

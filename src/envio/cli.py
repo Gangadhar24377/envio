@@ -536,6 +536,53 @@ def cli() -> None:
     pass
 
 
+@cli.group()
+def config() -> None:
+    """Manage envio configuration."""
+    pass
+
+
+@config.command("show")
+def config_show() -> None:
+    """Show current configuration."""
+    from envio.config import show_config
+
+    show_config()
+
+
+@config.command("set")
+@click.argument("key")
+@click.argument("value")
+def config_set(key: str, value: str) -> None:
+    """Set a configuration value."""
+    from envio.config import set_default_envs_dir, set_preferred_package_manager
+
+    if key == "default_envs_dir":
+        set_default_envs_dir(value)
+        print(f"✓ Default envs directory set to: {value}")
+    elif key == "preferred_package_manager":
+        set_preferred_package_manager(value)
+        print(f"✓ Preferred package manager set to: {value}")
+    else:
+        print(f"Unknown setting: {key}")
+        print("Available: default_envs_dir, preferred_package_manager")
+
+
+@config.command("unset")
+@click.argument("key")
+def config_unset(key: str) -> None:
+    """Unset a configuration value."""
+    from envio import config as config_module
+
+    cfg = config_module.load_config()
+    if key in cfg:
+        del cfg[key]
+        config_module.save_config(cfg)
+        print(f"✓ {key} has been unset")
+    else:
+        print(f"{key} is not set")
+
+
 @cli.command()
 @click.option(
     "--env-type", "-e", "env_type", default=None, help="Package manager (pip/conda/uv)"
@@ -1157,15 +1204,28 @@ def audit(
     try:
         import shutil
         import subprocess
+        import sys
 
         from envio.core.virtualenv_manager import VirtualEnvManager
 
-        # Check if pip-audit is available
-        if not shutil.which("pip-audit"):
-            console.print_error("pip-audit is not installed.")
-            console.print_info("Install it with: pip install pip-audit")
-            console.print_info("Or: uv pip install pip-audit")
-            return
+        # Check if pip-audit is available globally first
+        pip_audit_cmd = shutil.which("pip-audit")
+
+        if not pip_audit_cmd:
+            # Try to install pip-audit globally
+            console.print_info("pip-audit not found. Installing globally...")
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "pip-audit"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                console.print_error("Failed to install pip-audit")
+                if verbose:
+                    console.print_code_block(result.stderr, "text")
+                return
+            pip_audit_cmd = shutil.which("pip-audit")
+            console.print_success("pip-audit installed successfully")
 
         manager = VirtualEnvManager()
 
@@ -1187,14 +1247,16 @@ def audit(
         python_path = manager.get_python_path(env_path)
         console.print_info(f"Auditing environment: {env_path}")
 
-        # Run pip-audit
+        # Run pip-audit using GLOBAL pip-audit (not from target venv)
+        if not pip_audit_cmd:
+            console.print_error("pip-audit not available")
+            return
+
         console.print_info("Scanning for vulnerabilities...")
         with console.spinner("Running pip-audit..."):
             result = subprocess.run(
                 [
-                    str(python_path),
-                    "-m",
-                    "pip_audit",
+                    pip_audit_cmd,
                     "--format",
                     "json",
                     "--desc",
@@ -1202,6 +1264,7 @@ def audit(
                 capture_output=True,
                 text=True,
                 timeout=120,
+                cwd=str(env_path),
             )
 
         if result.returncode == 0:
@@ -1218,8 +1281,10 @@ def audit(
             if "No known vulnerabilities found" in result.stdout:
                 console.print_success("No vulnerabilities found!")
                 return
-            console.print_error("Failed to parse pip-audit output")
+            console.print_error("Failed to run pip-audit")
+            console.print_info(f"Error: {result.stderr.strip()}")
             if verbose:
+                console.print_code_block(result.stdout, "text")
                 console.print_code_block(result.stderr, "text")
             return
 
