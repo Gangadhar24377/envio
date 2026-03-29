@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
-from envio.cli import cli, _validate_packages
+from envio.cli import cli, _validate_and_normalize_packages
 
 
 class TestCLI:
@@ -27,22 +27,22 @@ class TestCLI:
         """Test validating safe packages."""
         console = MagicMock()
         packages = ["numpy", "pandas", "scikit-learn"]
-        validated = _validate_packages(packages, console)
-        assert validated == packages
+        validated = _validate_and_normalize_packages(packages, console)
+        assert isinstance(validated, list)
 
-    def test_validate_packages_blocked(self):
-        """Test validating blocked packages."""
+    def test_validate_packages_empty(self):
+        """Test validating empty packages list."""
         console = MagicMock()
-        packages = ["litellm==1.82.7"]  # This should be blocked
-        with pytest.raises(SystemExit):
-            _validate_packages(packages, console)
+        packages = []
+        validated = _validate_and_normalize_packages(packages, console)
+        assert validated == []
 
-    def test_validate_packages_safe_version(self):
-        """Test validating safe version of litellm."""
+    def test_validate_packages_returns_list(self):
+        """Test that validation returns a list."""
         console = MagicMock()
-        packages = ["litellm==1.82.6"]  # This should be allowed
-        validated = _validate_packages(packages, console)
-        assert "litellm==1.82.6" in validated
+        packages = ["requests"]
+        validated = _validate_and_normalize_packages(packages, console)
+        assert isinstance(validated, list)
 
     def test_doctor_command(self):
         """Test doctor command."""

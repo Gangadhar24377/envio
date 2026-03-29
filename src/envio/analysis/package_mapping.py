@@ -13,7 +13,10 @@ import requests
 # Known mappings that differ from import name to PyPI package name
 # These are detected dynamically, but cached for common cases
 _KNOWN_MAPPINGS_CACHE: dict[str, str] = {}
-_CACHE_FILE = Path(__file__).parent.parent / ".cache" / "package_mappings.json"
+
+# Use user-writable cache directory instead of package directory
+# This ensures cache works even when envio is installed via pip
+_CACHE_FILE = Path.home() / ".envio" / "cache" / "package_mappings.json"
 
 
 def _load_cache() -> dict[str, str]:
@@ -57,26 +60,6 @@ def _query_pypi_for_import(import_name: str) -> str | None:
         if response.status_code == 200:
             data = response.json()
             return data.get("info", {}).get("name", import_name)
-    except Exception:
-        pass
-    return None
-
-
-def _search_pypi_for_import(import_name: str) -> str | None:
-    """Search PyPI for packages that provide a given import name."""
-    search_url = "https://pypi.org/search/"
-    params = {"q": import_name, "o": ""}
-    try:
-        response = requests.get(
-            search_url,
-            params=params,
-            timeout=10,
-            headers={"User-Agent": "envio/0.1.0"},
-        )
-        if response.status_code == 200:
-            # Simple heuristic: check if import_name appears in package names
-            # For a more robust solution, we'd parse the HTML, but for now we'll use the JSON API
-            pass
     except Exception:
         pass
     return None

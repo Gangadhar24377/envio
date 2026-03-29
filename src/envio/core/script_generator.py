@@ -15,6 +15,26 @@ if TYPE_CHECKING:
     from envio.core.system_profiler import ShellType
 
 
+def escape_powershell_arg(arg: str) -> str:
+    """Escape string for safe use in PowerShell command arguments.
+
+    This prevents command injection via package names containing
+    PowerShell metacharacters like ;, $, &, |, etc.
+    """
+    if not arg:
+        return "''"
+    escaped = arg.replace("'", "''")
+    return f"'{escaped}'"
+
+
+def escape_powershell_path(path: str) -> str:
+    """Escape a path for safe use in PowerShell."""
+    if not path:
+        return "''"
+    escaped = path.replace("'", "''")
+    return f"'{escaped}'"
+
+
 class ScriptGenerator(ABC):
     """Abstract base class for script generators."""
 
@@ -122,16 +142,17 @@ try {{
             return ""
 
         if package_manager == "conda":
+            escaped_pkgs = " ".join(escape_powershell_arg(pkg) for pkg in packages)
             return f"""
 # Install packages using conda
-conda install -y {" ".join(packages)}
+conda install -y {escaped_pkgs}
 """
         else:
-            packages_str = " ".join(packages)
+            escaped_pkgs = " ".join(escape_powershell_arg(pkg) for pkg in packages)
             return f"""
 # Upgrade pip and install packages
 pip install --upgrade pip
-pip install {packages_str}
+pip install {escaped_pkgs}
 """
 
     def generate_setup_script(
@@ -153,18 +174,20 @@ pip install {packages_str}
         env_name = Path(venv_path).name
         safe_venv_path = venv_path  # Use original path - don't sanitize drive letters
 
-        # Sanitize package names
+        # Sanitize package names using PowerShell escaping
         safe_packages = []
         for pkg in packages:
             try:
-                safe_packages.append(sanitize_package_name(pkg))
+                safe_packages.append(escape_powershell_arg(pkg))
             except ValueError:
                 # Skip invalid package names
                 continue
 
         # Build package string with CUDA URL if provided
         packages_str = " ".join(safe_packages)
-        extra_index_arg = f" --extra-index-url {cuda_url}" if cuda_url else ""
+        extra_index_arg = (
+            f" --extra-index-url {escape_powershell_arg(cuda_url)}" if cuda_url else ""
+        )
 
         if package_manager == "conda":
             activation = f"""
@@ -186,15 +209,15 @@ pip install {packages_str}
             env_setup = f"""
     # Create virtual environment
     Write-Host "Creating virtual environment..."
-    python -m venv "{safe_venv_path}"
+    python -m venv "{escape_powershell_path(safe_venv_path)}"
 
     # Activate virtual environment
     Write-Host "Activating virtual environment..."
-    & "{safe_venv_path}\\Scripts\\Activate.ps1"
+    & "{escape_powershell_path(safe_venv_path)}\\Scripts\\Activate.ps1"
 """
             if package_manager == "uv":
                 install_block = "\n".join(
-                    f'    uv pip install --python "{safe_venv_path}\\Scripts\\python.exe"{extra_index_arg} {pkg}'
+                    f'    uv pip install --python "{escape_powershell_path(safe_venv_path)}\\Scripts\\python.exe"{extra_index_arg} {pkg}'
                     for pkg in safe_packages
                 )
                 install_note = "# Using uv for fast installation"
@@ -213,8 +236,14 @@ $ErrorActionPreference = 'Stop'
 $Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $LogFile = "setup_${{Timestamp}}.log"
 
-# Start logging
-Start-Transcript -Path $LogFile
+# Start logging with error handling
+$TranscriptStarted = $false
+try {{
+    Start-Transcript -Path $LogFile -ErrorAction SilentlyContinue
+    $TranscriptStarted = $true
+}} catch {{
+    Write-Warning "Could not start transcript: $_"
+}}
 
 Write-Host "Starting environment setup..." -ForegroundColor Cyan
 
@@ -230,7 +259,9 @@ try {{
     Write-Error "Error during setup: $_"
     exit 1
 }} finally {{
-    Stop-Transcript
+    if ($TranscriptStarted) {{
+        Stop-Transcript -ErrorAction SilentlyContinue
+    }}
 }}
 
 # Activation instructions

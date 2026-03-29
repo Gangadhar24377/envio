@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
+import requests
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
@@ -21,6 +22,7 @@ from rich.progress import (
 )
 from rich.table import Table
 from rich.text import Text
+from rich.tree import Tree
 
 
 def _timestamp() -> str:
@@ -255,6 +257,94 @@ class ConsoleUI:
                 table.add_row(pkg)
 
         self._safe_print(table)
+
+    def print_package_tree(
+        self,
+        packages: list[str],
+        title: str = "Package Dependency Tree",
+    ) -> None:
+        """Print packages in a tree format showing dependencies.
+
+        Args:
+            packages: List of package names
+            title: Title for the tree
+        """
+        ts = _timestamp()
+
+        if not self._use_rich:
+            print(f"\n[{ts}] {title}:")
+            for pkg in packages:
+                print(f"  {pkg}")
+            return
+
+        tree = Tree(f"[bold]{title}[/bold]", guide_style="cyan")
+        total_deps = 0
+
+        for pkg in packages:
+            # Clean package name (remove version specifiers)
+            pkg_name = pkg.split("==")[0].split(">=")[0].split("<=")[0].strip().lower()
+
+            # Try to fetch dependencies from PyPI
+            deps = self._fetch_package_dependencies(pkg_name)
+
+            if deps:
+                pkg_branch = tree.add(f"[green]{pkg}[/green]")
+                for dep in deps:
+                    dep_name = (
+                        dep.split("==")[0].split(">=")[0].split("<=")[0].strip().lower()
+                    )
+                    pkg_branch.add(f"[dim]{dep_name}[/dim]")
+                    total_deps += 1
+            else:
+                tree.add(f"[green]{pkg}[/green]")
+
+        self._safe_print(tree)
+
+        # Show summary
+        if total_deps > 0:
+            self.print_info(
+                f"Total: {len(packages)} main packages + {total_deps} dependencies"
+            )
+
+    def _fetch_package_dependencies(self, package_name: str) -> list[str]:
+        """Fetch package dependencies from PyPI.
+
+        Args:
+            package_name: Package name to look up
+
+        Returns:
+            List of dependency names (without versions)
+        """
+        try:
+            url = f"https://pypi.org/pypi/{package_name}/json"
+            response = requests.get(url, timeout=3)
+
+            if response.status_code == 200:
+                data = response.json()
+                requires = data.get("info", {}).get("requires_dist", [])
+                if requires:
+                    # Extract package names only (not version constraints)
+                    deps = []
+                    for req in requires:
+                        # Skip optional dependencies
+                        if "; extra ==" in req:
+                            continue
+                        # Extract package name
+                        dep_name = (
+                            req.split("==")[0]
+                            .split(">=")[0]
+                            .split("<=")[0]
+                            .split("<")[0]
+                            .split(">")[0]
+                            .split(";")[0]
+                            .strip()
+                        )
+                        if dep_name:
+                            deps.append(dep_name)
+                    return deps[:5]  # Limit to 5 dependencies to avoid clutter
+            return []
+        except Exception:
+            return []
 
     def print_installation_plan(
         self,

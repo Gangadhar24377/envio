@@ -71,7 +71,12 @@ class CommandGenerator:
                 "warnings": response.get("warnings", []),
             }
         except Exception:
-            fallback_commands = [f"{env_type} install {' '.join(packages)}"]
+            if env_type == "uv":
+                fallback_commands = [f"uv pip install {' '.join(packages)}"]
+            elif env_type == "conda":
+                fallback_commands = [f"conda install -y {' '.join(packages)}"]
+            else:
+                fallback_commands = [f"{env_type} install {' '.join(packages)}"]
             return {
                 "commands": fallback_commands,
                 "environment_type": env_type,

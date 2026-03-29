@@ -26,6 +26,12 @@ Envio is an AI-powered Python environment manager that combines the speed of `uv
 - **Package Validation**: Automatically validates and fixes deprecated/wrong package names (e.g., PIL→Pillow)
 - **Version Auto-Fix**: Finds correct versions when specified versions don't exist on PyPI
 - **Multi-Location Config**: Works from any directory - finds API keys from project or global config
+- **Dynamic Package Search**: AI-powered package suggestions with web search fallback
+- **Rich Progress Bars**: Beautiful progress bars using Rich (no more tqdm conflicts)
+- **Config Management**: First-run setup for default environment directory and package manager
+- **AI-Powered Python Version Detection**: Smart inference of required Python version from code patterns
+- **Smart Retry Logic**: Doesn't retry on auth errors (saves tokens and time)
+- **Offline Resilience**: Graceful handling when PyPI is unreachable
 
 ## Prerequisites
 
@@ -354,6 +360,37 @@ Options:
 - `--severity`: Minimum severity to report (`low`, `medium`, `high`, `critical`)
 - `--fix`: Auto-fix vulnerabilities by upgrading packages
 
+#### `envio resurrect`
+Resurrect dead Python projects by scanning code and inferring dependencies.
+
+```bash
+# Scan current directory
+envio resurrect .
+
+# Scan specific directory
+envio resurrect /path/to/old-project
+
+# Scan remote repository
+envio resurrect https://github.com/old/dead-repo
+
+# With options
+envio resurrect . --name my-project --path ~/envs --env-type uv
+```
+
+Features:
+- Scans Python files for imports
+- Maps import names to PyPI packages (PIL → Pillow, cv2 → opencv-python)
+- Validates versions against PyPI
+- Infers timeline and Python version from code patterns
+- Generates working requirements.txt
+- Auto-creates environment with detected packages
+
+Options:
+- `--name, -n`: Environment name (default: directory name)
+- `--path, -p`: Installation path (default: `./envs`)
+- `--env-type, -e`: Package manager (pip/conda/uv, default: uv)
+- `--verbose, -v`: Enable verbose output
+
 ---
 
 ## Testing the Commands
@@ -404,6 +441,11 @@ envio activate --env my-env
 
 # Remove packages from an environment
 envio remove numpy --env my-env
+
+# Resurrect dead Python projects
+envio resurrect .
+envio resurrect /path/to/old-project
+envio resurrect https://github.com/old/dead-repo
 
 # Test help
 envio --help
@@ -684,6 +726,29 @@ MIT License - see [LICENSE](LICENSE) for details.
 5. Submit a pull request
 
 ## Changelog
+
+### v0.3.0 (Phase 4 - Latest)
+- **New Command:**
+  - `envio resurrect` - Resurrect dead Python projects by scanning code and inferring dependencies
+- **Package Validation:**
+  - Auto-validates packages against PyPI before installation
+  - Maps deprecated import names (PIL → Pillow, cv2 → opencv-python)
+  - Finds correct versions when specified versions don't exist
+- **Self-Healing Integration:**
+  - Self-healing now triggers when resolution fails (not just installation)
+  - AI searches for correct package info when version not found
+- **Ollama Support:**
+  - Auto-detects Ollama when OpenAI key not set
+  - Default model: llama3
+- **Apple Silicon Detection:**
+  - Dynamic chip detection (M1/M2/M3/M4)
+  - PyTorch MPS availability check
+- **Registry Fix:**
+  - Fixed syntax error in registry.py
+  - Supports both old list format and new dict format
+- **Configuration:**
+  - Multi-location .env loading (cwd → project dir → ~/.envio/)
+  - Auto-creates ~/.envio/ directory on first run
 
 ### v0.2.0 (Phase 3)
 - **New Commands:**

@@ -20,13 +20,29 @@ CRITICAL RULES:
 - If user doesn't specify CPU/GPU preference, default to cpu_only: false and gpu_optimized: false
 - Only include GPU packages if user explicitly mentions "use GPU", "with CUDA", "train model", etc.
 
-Package suggestions based on project type:
-- ML/AI: numpy, pandas, scikit-learn (CPU only by default)
-- ML Training (explicit GPU): torch, torchvision, xformers, torchmetrics
-- ML Inference: torch (CPU), transformers, onnxruntime
-- Forecasting: statsmodels, prophet, pandas
-- Web: flask or fastapi, requests
-- Data science: pandas, numpy, matplotlib, jupyter
+INTELLIGENT PACKAGE SELECTION:
+Analyze the user's request and suggest packages based on:
+1. What type of project/app they want to build (web, ML, agents, automation, data science, etc.)
+2. What specific libraries/frameworks they mention or imply
+3. What's commonly needed for that type of project
+
+You are intelligent - don't rely on hardcoded lists. Think about what packages would be needed for:
+- The user's specific request
+- The project type they're describing
+- Common dependencies for that domain
+
+For example:
+- If they say "agentic system" or "AI agent" → think: crewai, langchain, openai, autogen, etc.
+- If they say "web scraper" → think: requests, beautifulsoup4, selenium, scrapy
+- If they say "data pipeline" → think: pandas, apache-airflow, luigi, prefect
+- If they say "REST API" → think: fastapi, flask, django, starlette
+- If they say "ML model" → think: scikit-learn, tensorflow, pytorch, xgboost
+- If they say "chatbot" → think: transformers, openai, langchain, chainlit
+- If they say "dashboard" → think: streamlit, dash, panel, gradio
+- If they say "image processing" → think: pillow, opencv-python, scikit-image
+- If they say "NLP" → think: spacy, nltk, transformers, gensim
+
+Think creatively about what packages would help the user achieve their goal.
 
 Always explain your reasoning briefly."""
 

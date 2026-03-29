@@ -6,11 +6,26 @@ import re
 import shlex
 
 
+def normalize_pypi_name(name: str) -> str:
+    """Normalize package name per PEP 503.
+
+    PyPI normalizes package names by converting dots and underscores to dashes
+    and lowercasing. This ensures consistent package name handling.
+
+    Args:
+        name: Package name to normalize
+
+    Returns:
+        Normalized package name
+    """
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 def validate_package_name(name: str) -> bool:
     """Validate package name contains only safe characters.
 
-    Allows: letters, numbers, underscore, dash, dot, brackets
-    Rejects: semicolon, ampersand, pipe, dollar, etc.
+    Uses PEP 503 normalization - dots and underscores are converted to dashes.
+    This validates against the actual characters pip will accept.
 
     Args:
         name: Package name to validate
@@ -24,9 +39,12 @@ def validate_package_name(name: str) -> bool:
     # Remove version specifiers for validation
     base_name = re.split(r"[<>=!~\[]", name)[0]
 
-    # Allow: letters, numbers, underscore, dash, dot
-    pattern = r"^[a-zA-Z0-9_\-\.]+$"
-    return bool(re.match(pattern, base_name))
+    # Normalize per PEP 503 (dots/underscores -> dashes)
+    normalized = normalize_pypi_name(base_name)
+
+    # PEP 503: only lowercase letters, numbers, underscores, hyphens
+    pattern = r"^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$"
+    return bool(re.match(pattern, normalized))
 
 
 def sanitize_path(path: str) -> str:

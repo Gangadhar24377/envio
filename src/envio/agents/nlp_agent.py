@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from envio.llm.client import LLMClient, LLMConfig
@@ -12,9 +13,125 @@ from envio.llm.prompts import NLP_SYSTEM_PROMPT, NLP_USER_PROMPT
 class NLPProcessor:
     """Processor for natural language package extraction."""
 
+    # Generic packages that might indicate the LLM didn't understand the request
+    GENERIC_PACKAGES = {
+        "requests",
+        "flask",
+        "fastapi",
+        "django",
+        "pandas",
+        "numpy",
+        "matplotlib",
+        "jupyter",
+        "httpx",
+        "aiohttp",
+    }
+
     def __init__(self, config: LLMConfig | None = None) -> None:
         self._llm = LLMClient(config)
         self._parser = ResponseParser()
+        self._search_tool = None
+
+    def _get_search_tool(self):
+        """Lazy load search tool."""
+        if self._search_tool is None:
+            from envio.tools.serper_search import SerperSearchTool
+
+            self._search_tool = SerperSearchTool()
+        return self._search_tool
+
+    def _search_for_packages(self, user_input: str, callback: Any = None) -> str:
+        """Search the web for relevant packages for the user's request.
+
+        Args:
+            user_input: User's request
+            callback: Optional callback for streaming updates
+
+        Returns:
+            Search results string
+        """
+        search_tool = self._get_search_tool()
+
+        # Create a targeted search query
+        search_query = f"best python packages for {user_input}"
+        if callback:
+            callback(f"  -> Searching for: {search_query}")
+
+        result = search_tool.run(search_query)
+        return result
+
+    def _enhance_with_search(
+        self,
+        user_input: str,
+        initial_packages: list[str],
+        callback: Any = None,
+    ) -> list[str]:
+        """Enhance package suggestions with web search if needed.
+
+        Args:
+            user_input: User's request
+            initial_packages: Initial package suggestions from LLM
+            callback: Optional callback for streaming updates
+
+        Returns:
+            Enhanced package list
+        """
+        # Check if packages seem generic
+        generic_count = sum(
+            1 for pkg in initial_packages if pkg.lower() in self.GENERIC_PACKAGES
+        )
+        is_mostly_generic = generic_count > len(initial_packages) * 0.5
+
+        if not is_mostly_generic:
+            # Packages look good, no need to search
+            return initial_packages
+
+        # Try to search for better packages
+        try:
+            search_results = self._search_for_packages(user_input, callback)
+
+            if (
+                "API key not found" in search_results
+                or "No search results" in search_results
+            ):
+                # No search available, return initial packages
+                return initial_packages
+
+            # Use LLM to parse search results and suggest packages
+            search_prompt = f"""Based on these search results, suggest Python packages for: {user_input}
+
+Search results:
+{search_results}
+
+Current suggestions (may be incomplete): {", ".join(initial_packages)}
+
+Based on the search results, provide a list of packages that would be appropriate.
+Consider both the current suggestions AND the search results.
+
+Respond with JSON:
+{{
+    "packages": ["package1", "package2", ...],
+    "reasoning": "why these packages"
+}}"""
+
+            response = self._llm.chat_json(
+                system_prompt="You are a Python package expert. Suggest packages based on search results.",
+                user_prompt=search_prompt,
+            )
+
+            enhanced_packages = response.get("packages", initial_packages)
+            if enhanced_packages:
+                if callback:
+                    callback(
+                        f"  -> Enhanced suggestions: {', '.join(enhanced_packages)}"
+                    )
+                return enhanced_packages
+
+        except Exception:
+            # If search fails, just return initial packages
+            pass
+
+        return initial_packages
 
     def extract(
         self,
@@ -54,6 +171,14 @@ class NLPProcessor:
                 callback("  -> Detected: GPU-optimized mode")
             if response.get("reasoning"):
                 callback(f"  -> {response['reasoning']}")
+
+        # Enhance packages with web search if they seem generic
+        packages = response.get("packages", [])
+        if packages:
+            enhanced_packages = self._enhance_with_search(
+                user_input, packages, callback
+            )
+            response["packages"] = enhanced_packages
 
         return response
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -17,6 +18,17 @@ def _is_url(source: str) -> bool:
     return source.startswith("http://") or source.startswith("https://")
 
 
+def _is_valid_git_url(url: str) -> bool:
+    """Validate git URL format."""
+    if not url:
+        return False
+    url = url.replace(".git", "")
+    parts = url.split("/")
+    if len(parts) < 2:
+        return False
+    return True
+
+
 def _clone_repo(url: str, target_dir: Path) -> Path:
     """Clone a git repository.
 
@@ -26,16 +38,34 @@ def _clone_repo(url: str, target_dir: Path) -> Path:
 
     Returns:
         Path to cloned repository
+
+    Raises:
+        ValueError: If URL format is invalid
+        RuntimeError: If git clone fails
     """
+    if not _is_valid_git_url(url):
+        raise ValueError(f"Invalid git URL format: {url}")
+
     repo_name = url.split("/")[-1].replace(".git", "")
     clone_path = target_dir / repo_name
 
-    subprocess.run(
+    if clone_path.exists():
+        shutil.rmtree(clone_path)
+
+    result = subprocess.run(
         ["git", "clone", "--depth", "1", url, str(clone_path)],
         capture_output=True,
         text=True,
         timeout=120,
     )
+
+    if result.returncode != 0:
+        if clone_path.exists():
+            shutil.rmtree(clone_path)
+        raise RuntimeError(f"Git clone failed: {result.stderr.strip()}")
+
+    if not clone_path.exists():
+        raise RuntimeError("Git clone completed but directory not found")
 
     return clone_path
 
@@ -64,16 +94,21 @@ def resurrect_command(
 
         # Ask for path if not specified
         if not path:
-            default_path = str(Path.home() / "Documents" / "envs")
+            from envio import config as config_module
+
+            default_path = (
+                config_module.get_default_envs_dir(prompt=False)[0] or "~/.envs"
+            )
             path = input(f"Environment path [default: {default_path}]: ").strip()
             if not path:
                 path = default_path
 
         # Create a temporary directory for cloning
         with tempfile.TemporaryDirectory() as tmp_dir:
-            repo_path = _clone_repo(source, Path(tmp_dir))
-            if not repo_path.exists():
-                console.print_error("Failed to clone repository")
+            try:
+                repo_path = _clone_repo(source, Path(tmp_dir))
+            except (ValueError, RuntimeError) as e:
+                console.print_error(f"Failed to clone repository: {e}")
                 return
 
             # Derive name from repo URL if not specified
@@ -138,6 +173,10 @@ def _analyze_directory(
     third_party = mapped_packages
     console.print_packages_table(third_party, "Detected Third-Party Packages")
 
+    # Show dependency tree if packages have dependencies
+    if len(third_party) > 1:
+        console.print_package_tree(third_party, "Package Dependencies")
+
     # Detect deprecated patterns
     console.print_info("Analyzing code patterns...")
     with console.spinner("Detecting deprecated syntax..."):
@@ -147,14 +186,31 @@ def _analyze_directory(
     for file_patterns in pattern_results.values():
         all_patterns.extend(file_patterns)
 
+    llm_client = None
+    try:
+        from envio.llm.client import LLMClient
+
+        llm_client = LLMClient()
+        detector = SyntaxDetector(llm_client=llm_client)
+    except Exception:
+        detector = SyntaxDetector()
+
+    from envio.utils.version_utils import detect_system_python_version
+
+    system_python = detect_system_python_version()
+
     if all_patterns:
         timeline = detector.infer_timeline(all_patterns)
-        python_version = detector.infer_python_version(all_patterns)
+        python_version, warning = detector.infer_python_version(
+            all_patterns, system_python
+        )
         console.print_info(f"Inferred timeline: {timeline}")
         console.print_info(f"Recommended Python: {python_version}")
+        if warning:
+            console.print_warning(warning)
     else:
         timeline = "modern (2020+)"
-        python_version = "3.11"
+        python_version = system_python if system_python else "3.11"
         console.print_info("Code appears to be modern (no deprecated patterns found)")
 
     # Find compatible versions
@@ -189,11 +245,23 @@ def _analyze_directory(
     console.print_info("Generated requirements.txt:")
     console.print_code_block(requirements_content, "txt")
 
-    # Save requirements.txt
+    # Save requirements.txt to user-specified path (persistent) AND cloned repo
+    output_paths = []
+
+    # Save to user-specified path (persistent)
+    if path:
+        output_dir = Path(path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        req_path_user = output_dir / "requirements.txt"
+        with open(req_path_user, "w") as f:
+            f.write(requirements_content)
+        output_paths.append(req_path_user)
+        console.print_success(f"Saved to: {req_path_user}")
+
+    # Also save to cloned repo (for reference)
     req_path = directory / "requirements.txt"
     with open(req_path, "w") as f:
         f.write(requirements_content)
-    console.print_success(f"Saved to: {req_path}")
 
     # Ask user if they want to create environment
     if console.confirm("\nCreate environment with these packages?", default=True):

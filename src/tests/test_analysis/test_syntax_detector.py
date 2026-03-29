@@ -80,6 +80,8 @@ class TestSyntaxDetector:
 
     def test_infer_python_version_modern(self):
         """Test inferring Python version for modern code."""
+        import sys
+
         detector = SyntaxDetector()
         patterns = [
             DeprecatedPattern(
@@ -91,11 +93,15 @@ class TestSyntaxDetector:
                 weight=10,
             )
         ]
-        version = detector.infer_python_version(patterns)
-        assert version == "3.11"
+        version, warning = detector.infer_python_version(patterns)
+        expected = f"{sys.version_info.major}.{sys.version_info.minor}"
+        assert version == expected
 
     def test_infer_python_version_empty(self):
         """Test inferring Python version for empty patterns."""
+        import sys
+
         detector = SyntaxDetector()
-        version = detector.infer_python_version([])
-        assert version == "3.11"
+        version, warning = detector.infer_python_version([])
+        expected = f"{sys.version_info.major}.{sys.version_info.minor}"
+        assert version == expected

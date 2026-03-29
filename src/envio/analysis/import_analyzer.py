@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tqdm import tqdm
+    from rich.progress import Progress
 
 
 def get_stdlib_modules() -> set[str]:
@@ -169,36 +169,19 @@ class ImportAnalyzer:
 
         max_workers = min(32, (os.cpu_count() or 1) + 4)
 
-        try:
-            from tqdm import tqdm
-
-            use_progress = True
-        except ImportError:
-            use_progress = False
+        print(f"  Scanning {len(py_files)} Python files...")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(self.parse_file, f): f for f in py_files}
 
-            if use_progress:
-                for future in tqdm(
-                    as_completed(futures),
-                    total=len(py_files),
-                    desc="Scanning Python files",
-                    unit="file",
-                ):
-                    try:
-                        imports = future.result()
-                        all_imports.update(imports or [])
-                    except Exception:
-                        continue
-            else:
-                for future in as_completed(futures):
-                    try:
-                        imports = future.result()
-                        all_imports.update(imports or [])
-                    except Exception:
-                        continue
+            for future in as_completed(futures):
+                try:
+                    imports = future.result()
+                    all_imports.update(imports or [])
+                except Exception:
+                    continue
 
+        print(f"  Scanned {len(py_files)} files")
         return self.categorize_imports(all_imports, project_root=directory)
 
     def parse_file(self, file_path: Path) -> list[str]:

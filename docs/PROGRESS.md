@@ -39,6 +39,9 @@ ENVIO_LLM_API_BASE=http://localhost:11434/v1  # optional for Ollama
 - **Package Validation**: Auto-validates packages against PyPI before installation
 - **Dynamic Package Fixing**: Maps deprecated import names (PIL→Pillow) and fixes invalid versions
 - **Self-Healing Integration**: All commands now trigger healing when resolution fails
+- **Rich Progress Bars**: Replaced tqdm with Rich Progress for better UI integration
+- **Dynamic Package Search**: AI-powered package suggestions with web search fallback
+- **Tree Display**: Shows package dependencies in tree format before installation
 
 #### CLI Fixes
 - Fixed syntax errors in cli.py (missing try/except blocks from merge conflicts)
@@ -53,6 +56,36 @@ ENVIO_LLM_API_BASE=http://localhost:11434/v1  # optional for Ollama
 #### Semantic Version Comparison
 - Uses `packaging.version.Version` instead of string comparison
 - Fixes incorrect results like `"1.9" > "1.82.6"`
+
+#### Phase 4: Config System & Bug Fixes (Mar 29, 2026)
+
+##### Configuration System
+- **First-Run Setup**: Interactive setup asks for default env directory and package manager
+- **`envio config` Command**: View and edit configuration (`envio config show`, `envio config set`)
+- **Config File**: Stores settings in `~/.envio/config.json`
+- **Smart Path Detection**: Uses XDG base directories on Linux, Documents on Windows
+
+##### Python Version Detection
+- **AI-Powered Inference**: Uses LiteLLM to determine minimum Python version from code patterns
+- **Pattern Caching**: Caches pattern→version mappings in `~/.envio/cache/pattern_versions.json`
+- **System Python**: Uses user's actual Python version instead of hardcoded values
+- **Static Mappings**: Built-in mappings for common patterns (f_string→3.6, walrus_operator→3.8, etc.)
+
+##### Bug Fixes
+- **Inline Comments**: requirements.txt parser now handles `# comments` correctly
+- **Hardcoded Paths**: Replaced 9 hardcoded `~/Documents/envs` with config-based paths
+- **Temp Directory**: resurrect now saves requirements.txt to user path (not temp)
+- **API Key Check**: doctor now checks both ENVIO_LLM_API_KEY and OPENAI_API_KEY
+- **Dead Code**: Removed unused `_search_pypi_for_import` and `bash_executor`
+- **Smart Retry**: Doesn't retry on auth errors (401, 403) - saves tokens/time
+- **Package Manager Detection**: lock command now detects actual package manager from environment
+- **Serper Results**: Returns top 5 results instead of just 1
+- **Timeouts**: Added 10s timeouts to all HTTP requests
+- **Export Sanitization**: Validates package names before embedding in Dockerfile/devcontainer
+- **Network Errors**: Shows warnings when PyPI is unreachable
+- **PowerShell Transcript**: Handles Start-Transcript failures gracefully
+- **ScriptGenerator Caching**: Caches generator instance for performance
+- **Input Validation**: Validates environment names (no path traversal, reserved names)
 
 #### Self-Healing Improvements
 - Error deduplication using hash-based detection

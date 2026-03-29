@@ -61,7 +61,7 @@ class SelfHealingLoop:
         normalized = re.sub(r"==[\d.]+", "", normalized)
         normalized = re.sub(r">=[\d.]+", "", normalized)
         normalized = re.sub(r"<=[\d.]+", "", normalized)
-        return hashlib.md5(normalized.encode()).hexdigest()
+        return hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()
 
     def _get_next_strategy(self) -> str:
         """Get the next fallback strategy to try."""
@@ -130,13 +130,18 @@ class SelfHealingLoop:
         return modified
 
     def _skip_optional_dependencies(self, packages: list[str], error: str) -> list[str]:
-        """Remove packages that might be optional dependencies."""
-        # Try removing packages with extra markers
+        """Remove packages that might be optional dependencies.
+
+        Instead of dropping packages with extras entirely, strip the extras
+        and keep the base package (e.g., torch[dev] → torch).
+        """
         modified = []
         for pkg in packages:
-            if "[" not in pkg:  # Keep packages without extras
+            if "[" in pkg:
+                base_pkg = pkg.split("[")[0]
+                modified.append(base_pkg)
+            else:
                 modified.append(pkg)
-            # Skip packages with extras which might be causing conflicts
         return modified
 
     def heal(
@@ -261,24 +266,35 @@ class SelfHealingLoop:
         """Try to fix a specific conflict."""
         pkg1, pkg2 = conflict.package1, conflict.package2
 
-        if pkg1 in packages and pkg2 in packages:
+        def get_base_name(pkg: str) -> str:
+            """Extract base package name, stripping version specifiers."""
+            return pkg.split("==")[0].split(">=")[0].split("<=")[0].split("[")[0]
+
+        pkg1_base = get_base_name(pkg1)
+        pkg2_base = get_base_name(pkg2) if pkg2 else None
+
+        if pkg1_base in [get_base_name(p) for p in packages] and pkg2_base in [
+            get_base_name(p) for p in packages
+        ]:
             versions = self._find_compatible_versions(pkg1, pkg2)
             if versions:
                 modified = []
                 for pkg in packages:
-                    if pkg == pkg1 and versions.get(pkg1):
-                        modified.append(f"{pkg1}=={versions[pkg1]}")
-                    elif pkg == pkg2 and versions.get(pkg2):
-                        modified.append(f"{pkg2}=={versions[pkg2]}")
+                    pkg_base = get_base_name(pkg)
+                    if pkg_base == pkg1_base and versions.get(pkg1):
+                        modified.append(f"{pkg1_base}=={versions[pkg1]}")
+                    elif pkg_base == pkg2_base and pkg2_base and versions.get(pkg2):
+                        modified.append(f"{pkg2_base}=={versions[pkg2]}")
                     else:
                         modified.append(pkg)
                 return modified
 
-        if pkg1 in packages:
+        if pkg1_base in [get_base_name(p) for p in packages]:
             compatible = self._find_single_compatible(pkg1)
             if compatible:
                 return [
-                    f"{pkg1}=={compatible}" if pkg1 in pkg else pkg for pkg in packages
+                    f"{pkg1_base}=={compatible}" if get_base_name(p) == pkg1_base else p
+                    for p in packages
                 ]
 
         return None

@@ -7,10 +7,20 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from packaging.version import Version
+
+from envio.utils.version_utils import (
+    detect_system_python_version,
+    major_minor,
+    max_version as max_version_util,
+    version_at_least,
+)
 
 if TYPE_CHECKING:
     from envio.analysis.import_analyzer import SKIP_INDICATORS
+    from envio.llm.client import LLMClient
 
 
 @dataclass
@@ -27,6 +37,15 @@ class DeprecatedPattern:
 
 class SyntaxDetector:
     """Detector for syntax patterns to infer codebase age."""
+
+    def __init__(self, llm_client: "LLMClient | None" = None) -> None:
+        """Initialize detector.
+
+        Args:
+            llm_client: Optional LLM client for AI-powered pattern queries.
+                       If None, only static mappings are used.
+        """
+        self._llm_client = llm_client
 
     # Strong Python 2 signals (weight 10)
     PYTHON2_PATTERNS = {
@@ -241,40 +260,21 @@ class SyntaxDetector:
 
         max_workers = min(32, (os.cpu_count() or 1) + 4)
 
-        try:
-            from tqdm import tqdm
-
-            use_progress = True
-        except ImportError:
-            use_progress = False
+        print(f"  Analyzing {len(py_files)} Python files...")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(self.detect_from_file, f): f for f in py_files}
 
-            if use_progress:
-                for future in tqdm(
-                    as_completed(futures),
-                    total=len(py_files),
-                    desc="Analyzing code patterns",
-                    unit="file",
-                ):
-                    py_file = futures[future]
-                    try:
-                        patterns = future.result()
-                        if patterns:
-                            results[str(py_file)] = patterns
-                    except Exception:
-                        continue
-            else:
-                for future in as_completed(futures):
-                    py_file = futures[future]
-                    try:
-                        patterns = future.result()
-                        if patterns:
-                            results[str(py_file)] = patterns
-                    except Exception:
-                        continue
+            for future in as_completed(futures):
+                py_file = futures[future]
+                try:
+                    patterns = future.result()
+                    if patterns:
+                        results[str(py_file)] = patterns
+                except Exception:
+                    continue
 
+        print(f"  Analyzed {len(py_files)} files")
         return results
 
     def infer_timeline(self, patterns: list[DeprecatedPattern]) -> str:
@@ -318,25 +318,124 @@ class SyntaxDetector:
         # Otherwise use Python 2 timeline
         return "2008-2015"
 
-    def infer_python_version(self, patterns: list[DeprecatedPattern]) -> str:
-        """Infer Python version using weighted scoring.
+    def infer_python_version(
+        self,
+        patterns: list[DeprecatedPattern],
+        system_python_version: str | None = None,
+    ) -> tuple[str, str | None]:
+        """Infer minimum required Python version from detected patterns.
+
+        Enhanced algorithm:
+        1. For each pattern, determine the minimum Python version it requires
+        2. Find the maximum of all minimum versions
+        3. If system Python is detected and >= max, use system version
+        4. Otherwise recommend the computed minimum
 
         Args:
             patterns: List of detected patterns
+            system_python_version: User's system Python version (optional)
 
         Returns:
-            Recommended Python version
+            Tuple of (recommended_version, warning_message)
+            warning_message is None if no issues, otherwise contains warning text
         """
         if not patterns:
-            return "3.11"
+            sys_ver = system_python_version or detect_system_python_version()
+            if sys_ver:
+                return major_minor(sys_ver), None
+            return "3.11", None
 
-        # Calculate scores
-        python2_score = sum(p.weight for p in patterns if p.era == "python2")
-        modern_score = sum(p.weight for p in patterns if p.era == "python3")
+        required_versions: list[str] = []
+        python2_detected = False
 
-        # If modern patterns exist, use modern Python
-        if modern_score >= python2_score:
-            return "3.11"
+        for pattern in patterns:
+            min_version = self._get_pattern_min_version(pattern)
 
-        # Only use Python 2 if there are strong signals
-        return "2.7"
+            if min_version:
+                try:
+                    if Version(min_version).major == 2:
+                        python2_detected = True
+                        continue
+                except Exception:
+                    pass
+
+                required_versions.append(min_version)
+
+        if python2_detected and not required_versions:
+            sys_ver = system_python_version or detect_system_python_version()
+            if sys_ver and version_at_least(sys_ver, "3.8"):
+                return major_minor(sys_ver), None
+            return "3.8", "Python 2 patterns detected. Recommending minimum Python 3.8"
+
+        if not required_versions:
+            sys_ver = system_python_version or detect_system_python_version()
+            if sys_ver:
+                return major_minor(sys_ver), None
+            return "3.11", None
+
+        max_required = max_version_util(required_versions)
+
+        sys_ver = system_python_version or detect_system_python_version()
+        if sys_ver:
+            sys_ver_minor = major_minor(sys_ver)
+            if version_at_least(sys_ver_minor, max_required):
+                return sys_ver_minor, None
+            else:
+                return (
+                    max_required,
+                    f"Your code requires Python {max_required}+ but you have {sys_ver_minor}",
+                )
+
+        return max_required, None
+
+    def _get_pattern_min_version(self, pattern: DeprecatedPattern) -> str | None:
+        """Get minimum Python version for a pattern.
+
+        Checks:
+        1. Pattern cache (static + AI-queried)
+        2. AI query (if LLM client available and not in cache)
+        3. Parse from timeline as fallback
+        """
+        from envio.analysis.pattern_version_cache import (
+            cache_pattern_version,
+            get_pattern_version,
+        )
+
+        cached = get_pattern_version(pattern.name)
+        if cached:
+            return cached.get("min_python_version")
+
+        if self._llm_client:
+            from envio.analysis.pattern_ai_query import query_ai_for_pattern
+
+            result = query_ai_for_pattern(
+                pattern_name=pattern.name,
+                description=pattern.description,
+                llm_client=self._llm_client,
+            )
+
+            if result:
+                cache_pattern_version(
+                    pattern_name=pattern.name,
+                    min_python_version=result["min_python_version"],
+                    confidence=result.get("confidence", "medium"),
+                    source="ai",
+                )
+                return result["min_python_version"]
+
+        return _parse_version_from_timeline(pattern.timeline)
+
+
+def _parse_version_from_timeline(timeline: str) -> str | None:
+    """Extract version from timeline string like '2019+' -> '3.8'."""
+    year_to_version = {
+        "2016": "3.6",
+        "2019": "3.8",
+        "2021": "3.10",
+    }
+
+    for year, version in year_to_version.items():
+        if year in timeline:
+            return version
+
+    return None

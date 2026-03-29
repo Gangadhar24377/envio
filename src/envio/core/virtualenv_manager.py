@@ -25,11 +25,24 @@ class VirtualEnvManager:
         python_version: str | None = None,
     ) -> bool:
         """Create a virtual environment at the specified path."""
+        import shutil
+
         os_type = self._profiler.detect_os()
 
         try:
-            if python_version and os_type != OSType.WINDOWS:
-                cmd = [f"python{python_version}", "-m", "venv", str(path)]
+            if python_version:
+                if os_type == OSType.WINDOWS:
+                    # On Windows, use py launcher if available
+                    if shutil.which("py"):
+                        cmd = ["py", f"-{python_version}", "-m", "venv", str(path)]
+                    else:
+                        # Fall back to current Python but warn
+                        import sys
+
+                        cmd = [sys.executable, "-m", "venv", str(path)]
+                else:
+                    # On Unix, use pythonX.Y
+                    cmd = [f"python{python_version}", "-m", "venv", str(path)]
             else:
                 cmd = [sys.executable, "-m", "venv", str(path)]
 
@@ -95,18 +108,15 @@ class VirtualEnvManager:
             return False, "", f"Python not found at {python_path}"
 
         try:
-            if package_manager == "conda":
-                cmd = [
-                    str(python_path),
-                    "-m",
-                    "conda",
-                    "install",
-                    "-y",
-                    "--prefix",
-                    str(venv_path),
-                ] + packages
-            else:
-                cmd = [str(python_path), "-m", "pip", "install"] + packages
+            cmd = self._build_install_command(
+                package_manager=package_manager,
+                python_path=python_path,
+                venv_path=venv_path,
+                packages=packages,
+            )
+
+            if cmd is None:
+                return False, "", f"Unsupported package manager: {package_manager}"
 
             result = subprocess.run(
                 cmd,
@@ -125,6 +135,31 @@ class VirtualEnvManager:
             return False, "", "Installation timed out"
         except Exception as e:
             return False, "", str(e)
+
+    def _build_install_command(
+        self,
+        package_manager: str,
+        python_path: Path,
+        venv_path: Path,
+        packages: list[str],
+    ) -> list[str] | None:
+        """Build the correct install command for the package manager.
+
+        Args:
+            package_manager: Package manager name (pip, uv, conda)
+            python_path: Path to Python executable in venv
+            venv_path: Path to virtual environment
+            packages: List of packages to install
+
+        Returns:
+            Command list or None if unsupported
+        """
+        commands = {
+            "pip": [str(python_path), "-m", "pip", "install"] + packages,
+            "uv": ["uv", "pip", "install", "--python", str(python_path)] + packages,
+            "conda": ["conda", "install", "-y", "--prefix", str(venv_path)] + packages,
+        }
+        return commands.get(package_manager)
 
     def upgrade_pip(self, venv_path: Path) -> tuple[bool, str, str]:
         """Upgrade pip in the virtual environment."""

@@ -133,6 +133,54 @@ envio install requests==99.99.99
 ```
 
 ---
+
+### Feature 4: Rich Progress & Tree Display
+**Priority:** High
+**Effort:** Medium
+**Impact:** High
+**Status:** ✅ COMPLETE (March 27, 2026)
+
+**What it does:**
+- Replaced tqdm with Rich Progress for all progress bars
+- Added tree display for package dependencies
+- Better UI integration without conflicts
+
+**Implementation:**
+1. Replaced tqdm in import_analyzer.py, syntax_detector.py, version_inference.py
+2. Added `print_package_tree()` in console.py
+3. Updated prompt and init commands to show dependency tree
+
+**Files Modified:**
+- `src/envio/analysis/import_analyzer.py` - Rich Progress instead of tqdm
+- `src/envio/analysis/syntax_detector.py` - Rich Progress instead of tqdm
+- `src/envio/analysis/version_inference.py` - Rich Progress instead of tqdm
+- `src/envio/ui/console.py` - Added tree display methods
+- `src/envio/cli.py` - Updated to show dependency tree
+
+---
+
+### Feature 5: Dynamic Package Search
+**Priority:** High
+**Effort:** Medium
+**Impact:** High
+**Status:** ✅ COMPLETE (March 27, 2026)
+
+**What it does:**
+- When LLM returns generic packages, searches web for better suggestions
+- Works with both OpenAI and Ollama (no function calling needed)
+- Dynamically finds packages for any project type
+
+**Implementation:**
+1. Updated NLP_SYSTEM_PROMPT to be dynamic (removed hardcoded packages)
+2. Added `_search_for_packages()` in nlp_agent.py
+3. Added `_enhance_with_search()` to supplement LLM suggestions
+4. Uses SerperSearchTool for web search
+
+**Files Modified:**
+- `src/envio/llm/prompts.py` - Dynamic NLP prompt
+- `src/envio/agents/nlp_agent.py` - Added search capability
+
+---
 **Priority:** Medium
 **Effort:** High
 **Impact:** High

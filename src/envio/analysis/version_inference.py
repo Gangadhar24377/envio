@@ -128,12 +128,7 @@ class VersionInference:
 
         results: dict[str, str] = {}
 
-        try:
-            from tqdm import tqdm
-
-            use_progress = True
-        except ImportError:
-            use_progress = False
+        print(f"  Querying {len(packages_to_query)} packages...")
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {
@@ -143,30 +138,16 @@ class VersionInference:
                 for pkg in packages_to_query
             }
 
-            if use_progress:
-                for future in tqdm(
-                    as_completed(futures),
-                    total=len(packages_to_query),
-                    desc="Querying PyPI",
-                    unit="pkg",
-                ):
-                    pkg = futures[future]
-                    try:
-                        version = future.result()
-                        if version:
-                            results[pkg] = version
-                    except Exception:
-                        continue
-            else:
-                for future in as_completed(futures):
-                    pkg = futures[future]
-                    try:
-                        version = future.result()
-                        if version:
-                            results[pkg] = version
-                    except Exception:
-                        continue
+            for future in as_completed(futures):
+                pkg = futures[future]
+                try:
+                    version = future.result()
+                    if version:
+                        results[pkg] = version
+                except Exception:
+                    continue
 
+        print(f"  Queried {len(packages_to_query)} packages")
         return results
 
     def _find_version_safe(
@@ -197,16 +178,9 @@ class VersionInference:
             return None
 
         latest_version = data.get("info", {}).get("version")
-        releases = data.get("releases", {})
 
-        if not releases:
-            return latest_version
-
-        if "python2" in timeline or "2008-2015" in timeline:
-            python2_versions = self._filter_python2_versions(releases)
-            if python2_versions:
-                return python2_versions[-1]
-
+        # Python 2 is dead (EOL since 2020)
+        # Always return latest version regardless of timeline
         return latest_version
 
     def _filter_python2_versions(self, releases: dict) -> list[str]:
