@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -36,15 +38,40 @@ class ConsoleUI:
     def __init__(self, verbose: bool = True, log_file: str | None = None) -> None:
         self._verbose = verbose
         self._start_time = time.time()
+
+        # Check for quiet mode (ENVIO_QUIET=1) or CI environment
+        self._quiet = os.getenv("ENVIO_QUIET", "").lower() in ("1", "true", "yes")
+        if os.getenv("CI") == "true":
+            self._quiet = True
+
+        # Check for NO_COLOR (https://no-color.org/)
+        no_color = os.getenv("NO_COLOR", "").lower() not in ("", "0", "false")
+
         try:
-            self._console = Console(stderr=True)
+            self._console = Console(
+                stderr=True,
+                force_terminal=not no_color,
+                no_color=no_color,
+            )
             self._use_rich = True
         except Exception:
             self._console = None
             self._use_rich = False
 
+        # Get terminal width for tables
+        self._width = 100  # default
+        if self._console:
+            try:
+                self._width = self._console.width
+            except Exception:
+                pass
+        # Clamp to reasonable range
+        self._width = max(60, min(200, self._width))
+
     def _safe_print(self, message: Any, **kwargs) -> None:
         """Print with fallback - accepts Rich objects or strings."""
+        if self._quiet:
+            return
         if self._console and self._use_rich:
             try:
                 self._console.print(message, **kwargs)
@@ -269,10 +296,11 @@ class ConsoleUI:
             packages: List of package names
             title: Title for the tree
         """
-        ts = _timestamp()
+        # Regex to extract just the package name
+        pkg_name_re = re.compile(r"^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)")
 
         if not self._use_rich:
-            print(f"\n[{ts}] {title}:")
+            print(f"\n{title}:")
             for pkg in packages:
                 print(f"  {pkg}")
             return
@@ -282,19 +310,21 @@ class ConsoleUI:
 
         for pkg in packages:
             # Clean package name (remove version specifiers)
-            pkg_name = pkg.split("==")[0].split(">=")[0].split("<=")[0].strip().lower()
+            match = pkg_name_re.match(pkg.strip())
+            pkg_name = match.group(1).lower() if match else pkg.strip().lower()
 
             # Try to fetch dependencies from PyPI
             deps = self._fetch_package_dependencies(pkg_name)
 
             if deps:
                 pkg_branch = tree.add(f"[green]{pkg}[/green]")
-                for dep in deps:
-                    dep_name = (
-                        dep.split("==")[0].split(">=")[0].split("<=")[0].strip().lower()
-                    )
-                    pkg_branch.add(f"[dim]{dep_name}[/dim]")
-                    total_deps += 1
+                visible = deps[:5]
+                for dep in visible:
+                    pkg_branch.add(f"[dim]{dep}[/dim]")
+                if len(deps) > 5:
+                    remaining = len(deps) - 5
+                    pkg_branch.add(f"[dim italic]... and {remaining} more[/dim italic]")
+                total_deps += len(deps)
             else:
                 tree.add(f"[green]{pkg}[/green]")
 
@@ -313,35 +343,36 @@ class ConsoleUI:
             package_name: Package name to look up
 
         Returns:
-            List of dependency names (without versions)
+            List of unique dependency names (clean names, no version specifiers)
         """
+        # Regex to extract just the package name from a PEP 508 requirement string
+        # Matches the name part before any version specifier, extra marker, or whitespace
+        pkg_name_re = re.compile(r"^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)")
+
         try:
             url = f"https://pypi.org/pypi/{package_name}/json"
-            response = requests.get(url, timeout=3)
+            response = requests.get(url, timeout=5)
 
             if response.status_code == 200:
                 data = response.json()
                 requires = data.get("info", {}).get("requires_dist", [])
                 if requires:
-                    # Extract package names only (not version constraints)
+                    seen = set()
                     deps = []
                     for req in requires:
-                        # Skip optional dependencies
-                        if "; extra ==" in req:
+                        # Skip optional/extra dependencies
+                        if "; extra ==" in req or "; extra ==" in req:
                             continue
-                        # Extract package name
-                        dep_name = (
-                            req.split("==")[0]
-                            .split(">=")[0]
-                            .split("<=")[0]
-                            .split("<")[0]
-                            .split(">")[0]
-                            .split(";")[0]
-                            .strip()
-                        )
-                        if dep_name:
-                            deps.append(dep_name)
-                    return deps[:5]  # Limit to 5 dependencies to avoid clutter
+                        # Extract clean package name using regex
+                        match = pkg_name_re.match(req.strip())
+                        if match:
+                            dep_name = match.group(1).lower()
+                            # Deduplicate (e.g. numpy appears twice for
+                            # different python_version conditions)
+                            if dep_name and dep_name not in seen:
+                                seen.add(dep_name)
+                                deps.append(dep_name)
+                    return deps
             return []
         except Exception:
             return []

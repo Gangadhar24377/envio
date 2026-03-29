@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import requests
 
+from envio.utils.http_utils import get_with_retry
+
 
 class PackageLookupTool:
     """Tool for looking up package information from PyPI or Conda."""
@@ -23,7 +25,7 @@ class PackageLookupTool:
         """Fetch package info from PyPI with optional version."""
         pypi_url = f"https://pypi.org/pypi/{package_name}/json"
         try:
-            response = requests.get(pypi_url, timeout=10)
+            response = get_with_retry(pypi_url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 latest_version = data["info"]["version"]
@@ -49,7 +51,7 @@ class PackageLookupTool:
         """Fetch package info from Conda with optional version."""
         conda_url = f"https://api.anaconda.org/package/conda-forge/{package_name}"
         try:
-            response = requests.get(conda_url, timeout=10)
+            response = get_with_retry(conda_url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 latest_version = data["latest_version"]

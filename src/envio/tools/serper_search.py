@@ -25,10 +25,12 @@ class SerperSearchTool:
             query: Search query
             num_results: Override default number of results
         """
-        api_key = os.getenv("SERPER_API_KEY")
+        from envio.config import get_serper_api_key
+
+        api_key = get_serper_api_key()
         if not api_key:
             return (
-                "Serper API key not found. Please set SERPER_API_KEY in your .env file."
+                "Serper API key not configured. Run: envio config serper-api <your-key>"
             )
 
         n = num_results or self.num_results

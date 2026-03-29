@@ -78,3 +78,14 @@ tmux-*.log
 
 # Project specific
 setup_env.sh
+envio_setup_*.ps1
+envio_setup_*.sh
+
+# Secrets / credentials
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# mypy
+.mypy_cache/

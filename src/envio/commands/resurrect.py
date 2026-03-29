@@ -47,6 +47,20 @@ def _clone_repo(url: str, target_dir: Path) -> Path:
         raise ValueError(f"Invalid git URL format: {url}")
 
     repo_name = url.split("/")[-1].replace(".git", "")
+
+    # Security: Validate and sanitize repo name to prevent path traversal
+    # Remove any path components that could escape target_dir
+    repo_name = repo_name.replace("..", "").replace("\\", "").replace("/", "")
+
+    if not repo_name or repo_name.startswith("."):
+        raise ValueError(f"Invalid repository name: {repo_name}")
+
+    # Validate it's a safe filename
+    import re
+
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", repo_name):
+        raise ValueError(f"Repository name contains invalid characters: {repo_name}")
+
     clone_path = target_dir / repo_name
 
     if clone_path.exists():
@@ -90,6 +104,13 @@ def resurrect_command(
     console.print_header("Envio Resurrect", "Analyze and revive old repositories")
 
     if _is_url(source):
+        # Check if git is installed
+        if shutil.which("git") is None:
+            console.print_error(
+                "Git is not installed. Please install git to clone repositories."
+            )
+            return
+
         console.print_info(f"Cloning repository: {source}")
 
         # Ask for path if not specified
@@ -121,10 +142,6 @@ def resurrect_command(
         if not repo_path.exists():
             console.print_error(f"Path not found: {source}")
             return
-
-        # Ask for path if not specified (for local directories)
-        if not path:
-            path = str(repo_path.parent / "envs")
 
         _analyze_directory(repo_path, name, path, env_type, console)
 
@@ -245,23 +262,19 @@ def _analyze_directory(
     console.print_info("Generated requirements.txt:")
     console.print_code_block(requirements_content, "txt")
 
-    # Save requirements.txt to user-specified path (persistent) AND cloned repo
-    output_paths = []
-
-    # Save to user-specified path (persistent)
-    if path:
-        output_dir = Path(path)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        req_path_user = output_dir / "requirements.txt"
-        with open(req_path_user, "w") as f:
-            f.write(requirements_content)
-        output_paths.append(req_path_user)
-        console.print_success(f"Saved to: {req_path_user}")
-
-    # Also save to cloned repo (for reference)
+    # Save requirements.txt to the analyzed directory
     req_path = directory / "requirements.txt"
+    if req_path.exists():
+        if not console.confirm(
+            f"\n{req_path} already exists. Overwrite?", default=True
+        ):
+            # Save with timestamp suffix instead
+            req_path = (
+                directory / f"requirements_envio_{int(__import__('time').time())}.txt"
+            )
     with open(req_path, "w") as f:
         f.write(requirements_content)
+    console.print_success(f"Saved to: {req_path}")
 
     # Ask user if they want to create environment
     if console.confirm("\nCreate environment with these packages?", default=True):
@@ -282,4 +295,7 @@ def _analyze_directory(
             preferences={},
             profile=profile,
             console=console,
+            original_command=f"envio resurrect {directory}",
         )
+    else:
+        console.print_warning("Aborted. No environment was resurrected.")

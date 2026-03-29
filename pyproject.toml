@@ -17,16 +17,18 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Gangadhar24377/envio.git"
+Repository = "https://github.com/Gangadhar24377/envio.git"
+Issues = "https://github.com/Gangadhar24377/envio.git/issues"
+
 dependencies = [
     "litellm>=1.47.0,<=1.82.6",  # DO NOT upgrade beyond 1.82.6 - versions 1.82.7+ are infected
     "requests>=2.32.0",
-    "httpx>=0.27.0",
-    "pydantic>=2.9.0",
     "python-dotenv>=1.0.0",
     "rich>=13.8.0",
     "click>=8.1.0",
     "tenacity>=8.5.0",
-    "tqdm>=4.66.0",
     "uv",
     "psutil>=5.9.0",
     "packaging>=24.0",

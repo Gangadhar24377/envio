@@ -161,6 +161,9 @@ class ImportAnalyzer:
 
         py_files = []
         for py_file in directory.glob("**/*.py"):
+            # Skip symlinks to prevent infinite loops
+            if py_file.is_symlink():
+                continue
             if self.should_scan_file(py_file):
                 py_files.append(py_file)
 
@@ -169,19 +172,27 @@ class ImportAnalyzer:
 
         max_workers = min(32, (os.cpu_count() or 1) + 4)
 
-        print(f"  Scanning {len(py_files)} Python files...")
+        from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(self.parse_file, f): f for f in py_files}
+        with Progress(
+            TextColumn("  [cyan]{task.description}[/cyan]"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            transient=True,
+            refresh_per_second=4,
+        ) as progress:
+            task = progress.add_task("Scanning Python files...", total=len(py_files))
 
-            for future in as_completed(futures):
-                try:
-                    imports = future.result()
-                    all_imports.update(imports or [])
-                except Exception:
-                    continue
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(self.parse_file, f): f for f in py_files}
 
-        print(f"  Scanned {len(py_files)} files")
+                for future in as_completed(futures):
+                    try:
+                        imports = future.result()
+                        all_imports.update(imports or [])
+                    except Exception:
+                        pass
+                    progress.advance(task)
         return self.categorize_imports(all_imports, project_root=directory)
 
     def parse_file(self, file_path: Path) -> list[str]:
@@ -239,6 +250,9 @@ class ImportAnalyzer:
 
         # Check if there's a .py file with that name in any subdirectory
         for py_file in project_root.glob(f"**/{module_name}.py"):
+            # Skip symlinks to prevent infinite loops
+            if py_file.is_symlink():
+                continue
             if self.should_scan_file(py_file):
                 return True
 

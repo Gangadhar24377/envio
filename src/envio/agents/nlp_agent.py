@@ -14,6 +14,7 @@ class NLPProcessor:
     """Processor for natural language package extraction."""
 
     # Generic packages that might indicate the LLM didn't understand the request
+    # and defaulted to safe/common packages instead of domain-specific ones
     GENERIC_PACKAGES = {
         "requests",
         "flask",
@@ -25,6 +26,19 @@ class NLPProcessor:
         "jupyter",
         "httpx",
         "aiohttp",
+        "scikit-learn",
+        "seaborn",
+        "tensorflow",
+        "pytorch",
+        "torch",
+        "ray",
+        "scipy",
+        "pillow",
+        "beautifulsoup4",
+        "sqlalchemy",
+        "pytest",
+        "black",
+        "pylint",
     }
 
     def __init__(self, config: LLMConfig | None = None) -> None:
@@ -93,8 +107,11 @@ class NLPProcessor:
             if (
                 "API key not found" in search_results
                 or "No search results" in search_results
+                or "Search failed" in search_results
+                or "Error during search" in search_results
+                or not search_results.strip()
             ):
-                # No search available, return initial packages
+                # No search available or search failed, return initial packages
                 return initial_packages
 
             # Use LLM to parse search results and suggest packages

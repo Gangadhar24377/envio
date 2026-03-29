@@ -28,11 +28,22 @@ def escape_powershell_arg(arg: str) -> str:
 
 
 def escape_powershell_path(path: str) -> str:
-    """Escape a path for safe use in PowerShell."""
+    """Escape a path for safe use in PowerShell.
+
+    PowerShell requires:
+    - Use double quotes for paths with spaces
+    - Escape backticks, dollars, quotes
+    - DON'T use single quotes (they're literal in PowerShell)
+    """
     if not path:
-        return "''"
-    escaped = path.replace("'", "''")
-    return f"'{escaped}'"
+        return '""'
+    # For Windows paths, we need proper handling
+    # Escape only special characters that PowerShell interprets
+    # Don't wrap in quotes here - let the caller decide based on context
+    escaped = path.replace("`", "``")
+    escaped = escaped.replace("$", "`$")
+    escaped = escaped.replace('"', '`"')
+    return escaped
 
 
 class ScriptGenerator(ABC):
@@ -96,8 +107,6 @@ class PowerShellGenerator(ScriptGenerator):
         script = f"""
 # Create virtual environment: {venv_name}
 $ErrorActionPreference = 'Stop'
-$Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$LogFile = Join-Path '{parent_dir}' "log_${{Timestamp}}.txt"
 
 try {{
     Set-Location '{parent_dir}'
@@ -206,18 +215,27 @@ pip install {escaped_pkgs}
             install_note = "# Using conda for installation"
         else:
             activation = self.generate_venv_activation_instructions(Path(venv_path))
+            # For PowerShell, we need double quotes around paths with spaces
+            escaped_path = escape_powershell_path(safe_venv_path)
+            # Only add quotes if path contains spaces
+            if " " in escaped_path:
+                quoted_path = f'"{escaped_path}"'
+            else:
+                quoted_path = escaped_path
             env_setup = f"""
     # Create virtual environment
     Write-Host "Creating virtual environment..."
-    python -m venv "{escape_powershell_path(safe_venv_path)}"
+    python -m venv {quoted_path}
 
     # Activate virtual environment
     Write-Host "Activating virtual environment..."
-    & "{escape_powershell_path(safe_venv_path)}\\Scripts\\Activate.ps1"
+    & "{escaped_path}\\Scripts\\Activate.ps1"
 """
             if package_manager == "uv":
+                # Build python exe path
+                python_exe = f"{escaped_path}\\Scripts\\python.exe"
                 install_block = "\n".join(
-                    f'    uv pip install --python "{escape_powershell_path(safe_venv_path)}\\Scripts\\python.exe"{extra_index_arg} {pkg}'
+                    f'    uv pip install --python "{python_exe}"{extra_index_arg} {pkg}'
                     for pkg in safe_packages
                 )
                 install_note = "# Using uv for fast installation"
@@ -233,17 +251,6 @@ pip install {escaped_pkgs}
 # Package Manager: {package_manager}
 
 $ErrorActionPreference = 'Stop'
-$Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$LogFile = "setup_${{Timestamp}}.log"
-
-# Start logging with error handling
-$TranscriptStarted = $false
-try {{
-    Start-Transcript -Path $LogFile -ErrorAction SilentlyContinue
-    $TranscriptStarted = $true
-}} catch {{
-    Write-Warning "Could not start transcript: $_"
-}}
 
 Write-Host "Starting environment setup..." -ForegroundColor Cyan
 
@@ -254,21 +261,13 @@ try {{
 {install_block}
 
     Write-Host "Environment setup completed successfully!" -ForegroundColor Green
-    Write-Host "Log file: $LogFile" -ForegroundColor Yellow
 }} catch {{
     Write-Error "Error during setup: $_"
     exit 1
-}} finally {{
-    if ($TranscriptStarted) {{
-        Stop-Transcript -ErrorAction SilentlyContinue
-    }}
 }}
 
 # Activation instructions
 {activation}
-
-# Cleanup
-Remove-Item $LogFile -ErrorAction SilentlyContinue
 """
 
 
@@ -363,60 +362,58 @@ pip install {packages_str}
         """
         env_name = Path(venv_path).name
 
-        # Build extra index arg for CUDA
-        extra_index_arg = f" --extra-index-url {cuda_url}" if cuda_url else ""
+        # Build extra index arg for CUDA (escape for Bash)
+        if cuda_url:
+            safe_cuda_url = shlex.quote(cuda_url)
+            extra_index_arg = f" --extra-index-url {safe_cuda_url}"
+        else:
+            extra_index_arg = ""
+
+        # Sanitize all packages for Bash
+        from envio.utils.sanitize import sanitize_packages
+
+        try:
+            safe_packages = sanitize_packages(packages)
+        except ValueError:
+            safe_packages = [shlex.quote(pkg) for pkg in packages]
+
+        safe_env_name = shlex.quote(env_name)
 
         if package_manager == "conda":
             activation = f"""
 # To activate the conda environment, run:
-# conda activate {env_name}
+# conda activate {safe_env_name}
 """
             env_setup = f"""
 # Create conda environment
-echo "Creating conda environment: {env_name}..."
-conda create -y -n {env_name} python=3.11
+echo "Creating conda environment: {safe_env_name}..."
+conda create -y -n {safe_env_name} python=3.11
 """
             install_lines = "\n".join(
-                f"conda run -n {env_name} pip install {pkg}" for pkg in packages
+                f"conda run -n {safe_env_name} pip install {pkg}"
+                for pkg in safe_packages
             )
             install_note = "# Using conda for installation"
         else:
             activation = self.generate_venv_activation_instructions(Path(venv_path))
-            path_str = venv_path.replace("\\", "/")
+            path_str = Path(venv_path).as_posix()
+            quoted_path = shlex.quote(path_str)
             env_setup = f"""
 # Create virtual environment
 echo "Creating virtual environment..."
-python3 -m venv "{path_str}"
+python3 -m venv {quoted_path}
 
 # Activate virtual environment
 echo "Activating virtual environment..."
-source "{path_str}/bin/activate"
+source {quoted_path}/bin/activate
 """
             if package_manager == "uv":
-                # Sanitize package names
-                from envio.utils.sanitize import sanitize_packages
-
-                try:
-                    safe_packages = sanitize_packages(packages)
-                except ValueError:
-                    # If any package name is invalid, fall back to quoting each package
-                    safe_packages = [shlex.quote(pkg) for pkg in packages]
-
                 install_lines = "\n".join(
-                    f"uv pip install --python {venv_path}/bin/python{extra_index_arg} {pkg}"
+                    f"uv pip install --python {quoted_path}/bin/python{extra_index_arg} {pkg}"
                     for pkg in safe_packages
                 )
                 install_note = "# Using uv for fast installation"
             else:
-                # Sanitize package names
-                from envio.utils.sanitize import sanitize_packages
-
-                try:
-                    safe_packages = sanitize_packages(packages)
-                except ValueError:
-                    # If any package name is invalid, fall back to quoting each package
-                    safe_packages = [shlex.quote(pkg) for pkg in packages]
-
                 install_lines = "\n".join(
                     f"pip install{extra_index_arg} {pkg}" for pkg in safe_packages
                 )
@@ -428,12 +425,6 @@ source "{path_str}/bin/activate"
 # Platform: {"Linux" if SystemProfiler().detect_os() == OSType.LINUX else "macOS"}
 # Package Manager: {package_manager}
 
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_FILE="setup_${{TIMESTAMP}}.log"
-
-# Start logging
-exec > >(tee -a "$LOG_FILE") 2>&1
-
 echo "Starting environment setup..."
 {env_setup}
 {install_note}
@@ -441,13 +432,9 @@ echo "Installing packages..."
 {install_lines}
 
 echo "Environment setup completed successfully!"
-echo "Log file: $LOG_FILE"
 
 # Activation instructions
 {activation}
-
-# Cleanup
-rm -f "$LOG_FILE"
 """
 
 

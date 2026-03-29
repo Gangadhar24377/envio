@@ -252,7 +252,8 @@ class SyntaxDetector:
         """
         results: dict[str, list[DeprecatedPattern]] = {}
 
-        all_files = list(directory.glob("**/*.py"))
+        # Filter out symlinks to prevent infinite loops
+        all_files = [f for f in directory.glob("**/*.py") if not f.is_symlink()]
         py_files = [f for f in all_files if self.should_scan(f)]
 
         if not py_files:
@@ -260,21 +261,31 @@ class SyntaxDetector:
 
         max_workers = min(32, (os.cpu_count() or 1) + 4)
 
-        print(f"  Analyzing {len(py_files)} Python files...")
+        from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(self.detect_from_file, f): f for f in py_files}
+        with Progress(
+            TextColumn("  [cyan]{task.description}[/cyan]"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            transient=True,
+            refresh_per_second=0,
+        ) as progress:
+            task = progress.add_task("Analyzing Python files...", total=len(py_files))
 
-            for future in as_completed(futures):
-                py_file = futures[future]
-                try:
-                    patterns = future.result()
-                    if patterns:
-                        results[str(py_file)] = patterns
-                except Exception:
-                    continue
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(self.detect_from_file, f): f for f in py_files
+                }
 
-        print(f"  Analyzed {len(py_files)} files")
+                for future in as_completed(futures):
+                    py_file = futures[future]
+                    try:
+                        patterns = future.result()
+                        if patterns:
+                            results[str(py_file)] = patterns
+                    except Exception:
+                        pass
+                    progress.advance(task)
         return results
 
     def infer_timeline(self, patterns: list[DeprecatedPattern]) -> str:

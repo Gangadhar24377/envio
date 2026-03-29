@@ -9,12 +9,60 @@ import time
 import traceback
 from pathlib import Path
 
+import re
+
 import click
 import requests
 
 from envio import __version__
 
 VALID_PACKAGE_MANAGERS = ["pip", "conda", "uv"]
+
+# Pattern for valid environment names (alphanumeric, underscore, hyphen, dot)
+_ENV_NAME_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+# Path traversal pattern - blocks ".." components
+_PATH_TRAVERSAL_RE = re.compile(r"(^|[/\\])\.\.([/\\]|$)")
+
+
+def _validate_path(path: str) -> bool:
+    """Validate path doesn't contain traversal attempts.
+
+    Args:
+        path: Path to validate
+
+    Returns:
+        True if safe, False if potentially malicious
+    """
+    if not path:
+        return False
+    # Check for path traversal attempts
+    if _PATH_TRAVERSAL_RE.search(path.replace("\\", "/")):
+        return False
+    # Check for null bytes
+    if "\0" in path:
+        return False
+    return True
+
+
+def _is_writable(path: Path) -> bool:
+    """Check if path is writable without attempting to create/modify.
+
+    Args:
+        path: Path to check
+
+    Returns:
+        True if writable, False otherwise
+    """
+    try:
+        if path.exists():
+            return os.access(path, os.W_OK)
+        # Check parent directory for new files
+        parent = path.parent
+        return parent.exists() and os.access(parent, os.W_OK)
+    except Exception:
+        return False
+
 
 # Common import name to PyPI package name mapping
 IMPORT_TO_PYPI = {
@@ -27,6 +75,60 @@ IMPORT_TO_PYPI = {
     "scipy": "scipy",
     "PIL": "pillow",
 }
+
+# Cache for AI-discovered package mappings
+_ai_package_cache: dict[str, str] = {}
+
+
+def _get_pypi_name_for_import(import_name: str) -> str | None:
+    """Use AI to find the pip package name for an import.
+
+    Args:
+        import_name: The Python import name (e.g., 'PIL', 'cv2', 'yaml')
+
+    Returns:
+        The PyPI package name or None if couldn't determine
+    """
+    if import_name in _ai_package_cache:
+        return _ai_package_cache[import_name]
+
+    try:
+        from envio.config import get_api_key, get_model
+        from envio.llm.client import LLMClient
+        from envio.llm.parser import ResponseParser
+
+        api_key = get_api_key()
+        if not api_key:
+            return None
+
+        model = get_model()
+        client = LLMClient(api_key=api_key, model=model)
+
+        prompt = f"""For the Python import "{import_name}", what is the exact pip package name I should install?
+
+Examples:
+- import PIL → pillow
+- import cv2 → opencv-python
+- import yaml → pyyaml
+- import sklearn → scikit-learn
+
+Respond with ONLY the package name, nothing else. If you don't know, respond with "UNKNOWN"."""
+
+        response = client.chat(
+            system_prompt="You are a Python package expert.", user_prompt=prompt
+        )
+        content = (
+            response.choices[0].message.content.strip() if response.choices else ""
+        )
+
+        if content and content != "UNKNOWN":
+            pypi_name = content.lower().strip()
+            _ai_package_cache[import_name] = pypi_name
+            return pypi_name
+    except Exception:
+        pass
+
+    return None
 
 
 def _normalize_package(pkg: str) -> list[str]:
@@ -55,8 +157,13 @@ def _normalize_package(pkg: str) -> list[str]:
     else:
         pkg_name = pkg.strip().lower()
 
-    # Map to PyPI name
-    pypi_name = IMPORT_TO_PYPI.get(pkg_name, pkg_name)
+    # Map to PyPI name - try static first, then AI for unknown imports
+    if pkg_name in IMPORT_TO_PYPI:
+        pypi_name = IMPORT_TO_PYPI[pkg_name]
+    else:
+        # Use AI to find the correct PyPI package name
+        ai_name = _get_pypi_name_for_import(pkg_name)
+        pypi_name = ai_name if ai_name else pkg_name
 
     # If version specified, validate it exists on PyPI (using pypi_name)
     if version_spec:
@@ -97,10 +204,14 @@ def _validate_and_normalize_packages(packages: list[str], console) -> list[str]:
 
         if status == "not_found":
             issues.append(f"  {pkg} → not found on PyPI")
-            # Try to find latest version
+            # Try to find latest version using static dict first, then AI
             try:
                 pkg_name = pkg.split("==")[0].lower()
-                pypi_name = IMPORT_TO_PYPI.get(pkg_name, pkg_name)
+                if pkg_name in IMPORT_TO_PYPI:
+                    pypi_name = IMPORT_TO_PYPI[pkg_name]
+                else:
+                    ai_name = _get_pypi_name_for_import(pkg_name)
+                    pypi_name = ai_name if ai_name else pkg_name
                 url = f"https://pypi.org/pypi/{pypi_name}/json"
                 response = requests.get(url, timeout=5)
                 if response.status_code == 200:
@@ -263,6 +374,7 @@ def _resolve_and_install(
     original_command: str = "envio install",
     dry_run: bool = False,
     skip_confirm: bool = False,
+    verbose: bool = False,
 ) -> bool:
     """Resolve dependencies and install environment with self-healing."""
     resolver = _get_dependency_resolver()
@@ -271,6 +383,7 @@ def _resolve_and_install(
 
     venv_path = Path(env_path) / env_name
     max_retries = 3
+    error_output = ""
 
     for attempt in range(max_retries):
         # Display plan (only on first attempt)
@@ -325,7 +438,33 @@ def _resolve_and_install(
             final_packages = resolved.get("packages", packages)
             console.print_success(f"Resolved via AI! Using packages: {final_packages}")
 
-        console.print_packages_table(final_packages, "Resolved Packages")
+        # Get full dependency tree from uv output
+        full_deps = []
+        if resolved.get("stdout"):
+            # Parse uv output to extract all dependencies
+            lines = resolved["stdout"].split("\n")
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith("=") and not line.startswith("-"):
+                    # Extract package info from uv output
+                    if " " in line or "==" in line:
+                        # Clean up the line to get package name
+                        pkg = line.split()[0].split("==")[0]
+                        if pkg and pkg not in full_deps:
+                            full_deps.append(pkg)
+
+        # If we got dependencies from uv, use them; otherwise use final_packages
+        display_packages = full_deps if full_deps else final_packages
+
+        if full_deps and len(full_deps) > len(final_packages):
+            console.print_packages_table(
+                final_packages, f"Core Packages ({len(final_packages)})"
+            )
+            console.print_package_tree(
+                full_deps, f"Full Dependency Tree ({len(full_deps)} packages)"
+            )
+        else:
+            console.print_package_tree(display_packages, "Resolved Packages")
 
         # Get CUDA URL for PyTorch if GPU is available
         cuda_url = None
@@ -339,7 +478,7 @@ def _resolve_and_install(
                 elif "11.8" in cuda_version:
                     cuda_url = "https://download.pytorch.org/whl/cu118"
 
-        # Generate script
+        # Generate script content in memory (not written to disk yet)
         console.print_info("Generating installation script...")
         script_content = script_gen.generate_setup_script(
             venv_path=str(venv_path),
@@ -348,25 +487,24 @@ def _resolve_and_install(
             cuda_url=cuda_url,
         )
 
-        script_path = executor.write_script(
-            script_content,
-            Path(env_path) / f"envio_setup_{env_name}",
-        )
-
         # Dry run: show what would happen without executing
         if dry_run:
             console.print_info("[DRY RUN] Would execute the following script:")
             console.print_code_block(script_content, "bash")
-            console.print_info(f"[DRY RUN] Script saved to: {script_path}")
             console.print_info("[DRY RUN] No changes were made to your system.")
             return True
 
         # Interactive confirmation
         if not skip_confirm:
             if not console.confirm("Proceed with installation?", default=True):
-                console.print_warning("Installation cancelled by user.")
-                console.print_info(f"Generated script saved to: {script_path}")
+                console.print_warning("Aborted. No environment was created.")
                 return False
+
+        # Write script to disk only after confirmation
+        script_path = executor.write_script(
+            script_content,
+            Path(env_path) / f"envio_setup_{env_name}",
+        )
 
         # Execute script
         console.print_info("Executing installation...")
@@ -379,6 +517,24 @@ def _resolve_and_install(
 
         if returncode == 0:
             console.print_success("Environment setup completed!")
+
+            # Register environment in the registry so `envio list` can track it
+            try:
+                from envio.core.registry import EnvironmentRegistry
+
+                registry = EnvironmentRegistry()
+                registry.register(
+                    name=env_name,
+                    path=str(venv_path),
+                    packages=final_packages,
+                    manager=package_manager,
+                    command=original_command,
+                )
+            except Exception:
+                console.print_warning(
+                    "Could not register environment. It won't appear in 'envio list'."
+                )
+
             activation_cmd = script_gen.generate_venv_activation_instructions(venv_path)
             console.print_info("To activate the environment:")
             console.print_code_block(activation_cmd.strip(), "bash")
@@ -390,6 +546,15 @@ def _resolve_and_install(
             console.print_warning(
                 f"Installation failed (attempt {attempt + 1}/{max_retries})"
             )
+
+            # Show full error details in verbose mode
+            if verbose:
+                console.print_info("=== ERROR DETAILS ===")
+                console.print_code_block(f"Return code: {returncode}", "bash")
+                console.print_code_block(f"STDOUT:\n{stdout}", "bash")
+                console.print_code_block(f"STDERR:\n{stderr}", "bash")
+                console.print_code_block(f"Full error:\n{error_output}", "bash")
+
             console.print_info("Analyzing error with AI...")
 
             console.print_healing_status(attempt + 1, max_retries, error_output)
@@ -405,12 +570,21 @@ def _resolve_and_install(
                 packages = healing_result["packages"]
                 continue
             else:
+                # Show healing failure details in verbose mode
+                if verbose and healing_result.get("error"):
+                    console.print_info(f"Healing error: {healing_result.get('error')}")
                 console.print_warning(
                     "Could not find fix, retrying with original packages..."
                 )
         else:
             console.print_error("Installation failed after all attempts!")
-            console.print_code_block(stderr or stdout, "bash")
+            # Show full error details
+            console.print_code_block(f"STDOUT:\n{stdout}", "bash") if stdout else None
+            console.print_code_block(f"STDERR:\n{stderr}", "bash") if stderr else None
+            if verbose:
+                console.print_info("=== FINAL ERROR SUMMARY ===")
+                console.print_code_block(f"Return code: {returncode}", "bash")
+                console.print_code_block(f"Error output: {error_output}", "bash")
             return False
 
     return False
@@ -529,16 +703,31 @@ def _parse_environment_yml(filepath: Path, filename: str) -> dict:
 # =============================================================================
 
 
-@click.group()
-@click.version_option(version="0.1.0")
+@click.group(
+    context_settings={"help_option_names": ["-h", "--help"], "max_content_width": 120},
+)
+@click.version_option(version="0.1.0", prog_name="envio")
 def cli() -> None:
-    """Envio - AI-Native Environment Orchestrator."""
+    """Envio - AI-Native Environment Orchestrator.
+
+    For detailed documentation and examples, see:
+    https://github.com/Gangadhar24377/envio/blob/main/COMMANDS.md
+    """
     pass
 
 
 @cli.group()
 def config() -> None:
-    """Manage envio configuration."""
+    """Manage envio configuration.
+
+    \b
+    envio config api <key>         Set API key (auto-detects provider)
+    envio config model <name>      Set model name
+    envio config show              Show configuration
+    envio config unset api         Clear API key
+    envio config unset model       Clear model
+    envio config set <key> <value> Set arbitrary config value
+    """
     pass
 
 
@@ -550,46 +739,402 @@ def config_show() -> None:
     show_config()
 
 
+@config.command("api")
+@click.argument("api_key")
+@click.option(
+    "--provider", "-p", default=None, help="Explicit provider (openai, anthropic, etc.)"
+)
+def config_api(api_key: str, provider: str | None = None) -> None:
+    """Set API key (auto-detects provider).
+
+    Examples:
+        envio config api sk-your-openai-key
+        envio config api sk-ant-your-key
+        envio config api some-key --provider together
+    """
+    from envio.config import (
+        AVAILABLE_PROVIDERS,
+        detect_provider_from_key,
+        set_api_key,
+        set_provider,
+    )
+
+    # Auto-detect provider
+    if not provider:
+        provider = detect_provider_from_key(api_key)
+
+    if not provider:
+        # Unknown key format - ask user
+        print("Unknown API key format. Please select provider:")
+        for i, p in enumerate(AVAILABLE_PROVIDERS, 1):
+            if p != "ollama":  # Ollama doesn't need API key
+                print(f"  {i}. {p}")
+        choice = input("Choice [1]: ").strip() or "1"
+        try:
+            provider = AVAILABLE_PROVIDERS[int(choice) - 1]
+        except (ValueError, IndexError):
+            provider = "openai"
+
+    set_api_key(api_key, provider)
+
+    # Mask the key for display
+    if len(api_key) > 12:
+        masked = api_key[:8] + "..." + api_key[-4:]
+    else:
+        masked = api_key[:4] + "..."
+
+    # Try to import Rich
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+
+        use_rich = True
+    except ImportError:
+        use_rich = False
+
+    if use_rich:
+        console = Console()
+        # Create table for API key info
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column("Setting", style="cyan", no_wrap=True)
+        table.add_column("Value", style="green")
+
+        table.add_row("API key:", Text(masked, style="green"))
+        table.add_row("Provider:", Text(provider, style="green"))
+
+        # Create panel
+        panel = Panel(
+            table,
+            title="[bold green]API Key Configured[/bold green]",
+            border_style="green",
+            padding=(1, 2),
+        )
+
+        console.print(panel)
+        console.print("[dim]Set your model with: envio config model <name>[/dim]")
+        console.print()
+    else:
+        # Fallback to original plain text
+        print(f"[+] API key set: {masked}")
+        print(f"[+] Provider: {provider}")
+        print("\nSet your model with: envio config model <name>")
+
+
+@config.command("serper-api")
+@click.argument("api_key")
+def config_serper_api(api_key: str) -> None:
+    """Set Serper API key for web search.
+
+    Examples:
+        envio config serper-api your-serper-key
+    """
+    from envio.config import set_serper_api_key
+
+    set_serper_api_key(api_key)
+
+    # Mask the key for display
+    if len(api_key) > 12:
+        masked = api_key[:8] + "..." + api_key[-4:]
+    else:
+        masked = api_key[:4] + "..."
+
+    # Try to import Rich
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+
+        console = Console()
+        console.print(f"[green]Serper API key set:[/green] {masked}")
+        console.print()
+    except ImportError:
+        print(f"[+] Serper API key set: {masked}")
+
+
+@config.command("model")
+@click.argument("model")
+def config_model(model: str) -> None:
+    """Set the LLM model.
+
+    Examples:
+        envio config model gpt-4o
+        envio config model llama3
+        envio config model claude-3-opus-20240229
+    """
+    from envio.config import get_provider, set_model
+
+    # Try to import Rich
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+
+        use_rich = True
+    except ImportError:
+        use_rich = False
+
+    provider = get_provider()
+    set_model(model)
+
+    if use_rich:
+        console = Console()
+        # Create table for model info
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column("Setting", style="cyan", no_wrap=True)
+        table.add_column("Value", style="green")
+
+        table.add_row("Model:", Text(model, style="green"))
+        table.add_row("Provider:", Text(provider, style="green"))
+
+        # Create panel
+        panel = Panel(
+            table,
+            title="[bold green]Model Configured[/bold green]",
+            border_style="green",
+            padding=(1, 2),
+        )
+
+        console.print(panel)
+        console.print()
+    else:
+        # Fallback to original plain text
+        print(f"[+] Model set: {model}")
+        print(f"[+] Provider: {provider}")
+
+
 @config.command("set")
 @click.argument("key")
 @click.argument("value")
 def config_set(key: str, value: str) -> None:
-    """Set a configuration value."""
+    """Set a configuration value.
+
+    Supported keys:
+        default_envs_dir - Default directory for environments
+        preferred_package_manager - Preferred package manager (pip, uv, conda)
+    """
     from envio.config import set_default_envs_dir, set_preferred_package_manager
+
+    # Try to import Rich
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+
+        use_rich = True
+    except ImportError:
+        use_rich = False
 
     if key == "default_envs_dir":
         set_default_envs_dir(value)
-        print(f"✓ Default envs directory set to: {value}")
+        if use_rich:
+            console = Console()
+            # Create table for directory info
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column("Setting", style="cyan", no_wrap=True)
+            table.add_column("Value", style="green")
+
+            table.add_row("Default envs directory:", Text(value, style="green"))
+
+            # Create panel
+            panel = Panel(
+                table,
+                title="[bold green]Configuration Updated[/bold green]",
+                border_style="green",
+                padding=(1, 2),
+            )
+
+            console.print(panel)
+            console.print()
+        else:
+            print(f"[+] Default envs directory set to: {value}")
     elif key == "preferred_package_manager":
         set_preferred_package_manager(value)
-        print(f"✓ Preferred package manager set to: {value}")
+        if use_rich:
+            console = Console()
+            # Create table for package manager info
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column("Setting", style="cyan", no_wrap=True)
+            table.add_column("Value", style="green")
+
+            table.add_row("Preferred package manager:", Text(value, style="green"))
+
+            # Create panel
+            panel = Panel(
+                table,
+                title="[bold green]Configuration Updated[/bold green]",
+                border_style="green",
+                padding=(1, 2),
+            )
+
+            console.print(panel)
+            console.print()
+        else:
+            print(f"[+] Preferred package manager set to: {value}")
     else:
-        print(f"Unknown setting: {key}")
-        print("Available: default_envs_dir, preferred_package_manager")
+        if use_rich:
+            console = Console()
+            # Create error table
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column("Message", style="red")
+
+            table.add_row(Text(f"Unknown setting: {key}", style="red"))
+            table.add_row(
+                Text(
+                    "Available: default_envs_dir, preferred_package_manager",
+                    style="yellow",
+                )
+            )
+
+            # Create panel
+            panel = Panel(
+                table,
+                title="[bold red]Configuration Error[/bold red]",
+                border_style="red",
+                padding=(1, 2),
+            )
+
+            console.print(panel)
+            console.print()
+        else:
+            print(f"Unknown setting: {key}")
+            print("Available: default_envs_dir, preferred_package_manager")
 
 
 @config.command("unset")
 @click.argument("key")
 def config_unset(key: str) -> None:
-    """Unset a configuration value."""
+    """Unset a configuration value.
+
+    Supported keys:
+        api - Clear API key
+        model - Clear model
+        provider - Clear provider
+    """
     from envio import config as config_module
 
+    # Try to import Rich
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+
+        use_rich = True
+    except ImportError:
+        use_rich = False
+
     cfg = config_module.load_config()
-    if key in cfg:
+    if key == "api":
+        cfg.pop("api_key", None)
+        cfg.pop("provider", None)
+        config_module.save_config(cfg)
+        if use_rich:
+            console = Console()
+            # Create table for unset info
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column("Message", style="green")
+
+            table.add_row(Text("API key cleared", style="green"))
+
+            # Create panel
+            panel = Panel(
+                table,
+                title="[bold green]Configuration Cleared[/bold green]",
+                border_style="green",
+                padding=(1, 2),
+            )
+
+            console.print(panel)
+            console.print()
+        else:
+            print("[+] API key cleared")
+    elif key == "model":
+        cfg.pop("model", None)
+        config_module.save_config(cfg)
+        if use_rich:
+            console = Console()
+            # Create table for unset info
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column("Message", style="green")
+
+            table.add_row(Text("Model cleared", style="green"))
+
+            # Create panel
+            panel = Panel(
+                table,
+                title="[bold green]Configuration Cleared[/bold green]",
+                border_style="green",
+                padding=(1, 2),
+            )
+
+            console.print(panel)
+            console.print()
+        else:
+            print("[+] Model cleared")
+    elif key in cfg:
         del cfg[key]
         config_module.save_config(cfg)
-        print(f"✓ {key} has been unset")
+        if use_rich:
+            console = Console()
+            # Create table for unset info
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column("Message", style="green")
+
+            table.add_row(Text(f"{key} has been unset", style="green"))
+
+            # Create panel
+            panel = Panel(
+                table,
+                title="[bold green]Configuration Cleared[/bold green]",
+                border_style="green",
+                padding=(1, 2),
+            )
+
+            console.print(panel)
+            console.print()
+        else:
+            print(f"[+] {key} has been unset")
     else:
-        print(f"{key} is not set")
+        if use_rich:
+            console = Console()
+            # Create table for warning
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column("Message", style="yellow")
+
+            table.add_row(Text(f"{key} is not set", style="yellow"))
+
+            # Create panel
+            panel = Panel(
+                table,
+                title="[bold yellow]Configuration Info[/bold yellow]",
+                border_style="yellow",
+                padding=(1, 2),
+            )
+
+            console.print(panel)
+            console.print()
+        else:
+            print(f"{key} is not set")
 
 
-@cli.command()
+@cli.command(short_help="envio init .                    Initialize from current dir")
 @click.option(
     "--env-type", "-e", "env_type", default=None, help="Package manager (pip/conda/uv)"
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def init(env_type: str | None, verbose: bool) -> None:
-    """Initialize environment from directory."""
+    """Initialize environment from directory.
+
+    \b
+    Examples:
+        envio init .
+        envio init /path/to/project
+        envio init . -n my-env
+        envio init . --manager uv
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Init", "Scan directory and set up environment")
@@ -654,8 +1199,49 @@ def init(env_type: str | None, verbose: bool) -> None:
         console.print_packages_table(detected["packages"], "Detected Packages")
 
         # Ask for environment name
-        env_name = input("\nEnvironment name [default: .venv]: ").strip() or ".venv"
-        env_path = str(directory)
+        try:
+            env_name = input("\nEnvironment name [default: .venv]: ").strip() or ".venv"
+        except (KeyboardInterrupt, EOFError):
+            console.print_warning("\nAborted.")
+            return
+
+        if not _ENV_NAME_RE.match(env_name):
+            console.print_error(
+                "Invalid name. Use only letters, numbers, underscore, hyphen, and dot."
+            )
+            return
+
+        # Ask where to create the environment
+        default_envs_dir = str(Path.home() / "Documents" / "envs")
+        here_path = str(directory / env_name) if env_name != ".venv" else str(directory)
+        default_path = str(Path(default_envs_dir) / env_name)
+
+        console.print_info("Where to create the environment?")
+        console._safe_print(f"  [cyan][1][/cyan] Here      ({here_path})")
+        console._safe_print(f"  [cyan][2][/cyan] Default   ({default_path})")
+        console._safe_print(f"  [cyan][3][/cyan] Custom path")
+        try:
+            location_choice = input("Choice [1]: ").strip() or "1"
+        except (KeyboardInterrupt, EOFError):
+            console.print_warning("\nAborted.")
+            return
+
+        if location_choice == "2":
+            env_path = default_envs_dir
+        elif location_choice == "3":
+            try:
+                env_path = input("Enter path: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                console.print_warning("\nAborted.")
+                return
+            if not env_path:
+                console.print_error("No path provided.")
+                return
+            if not _validate_path(env_path):
+                console.print_error("Invalid path. Path traversal not allowed.")
+                return
+        else:
+            env_path = str(directory)
 
         # Use user-specified env_type, detected type, or default to uv
         final_env_type = env_type or detected.get("env_type") or "uv"
@@ -676,6 +1262,7 @@ def init(env_type: str | None, verbose: bool) -> None:
             profile=profile,
             console=console,
             original_command="envio init",
+            verbose=verbose,
         )
 
     except Exception as e:
@@ -684,7 +1271,9 @@ def init(env_type: str | None, verbose: bool) -> None:
             console._safe_print(traceback.format_exc())
 
 
-@cli.command()
+@cli.command(
+    short_help='envio prompt "web app flask"       Create env from description'
+)
 @click.argument("prompt_text", nargs=-1, required=True)
 @click.option("--name", "-n", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Environment path")
@@ -711,18 +1300,26 @@ def prompt(
     yes: bool,
     verbose: bool,
 ) -> None:
-    """Set up environment from natural language prompt."""
+    """Set up environment from natural language prompt.
+
+    \b
+    Examples:
+        envio prompt "web app with flask and react"
+        envio prompt "machine learning with pytorch" --optimize-for gpu
+        envio prompt "data analysis with pandas" --cpu-only
+        envio prompt "flask api" --dry-run
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Prompt", "Natural language environment setup")
 
-    # Check for API key
-    api_key = os.getenv("ENVIO_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+    # Check for API key from config
+    from envio.config import get_api_key
+
+    api_key = get_api_key()
     if not api_key:
         console.print_warning("No API key found. Falling back to PyPI-only resolution.")
-        console.print_info(
-            "Set ENVIO_LLM_API_KEY or OPENAI_API_KEY for AI-powered features."
-        )
+        console.print_info("Run: envio config api <your-key> to enable AI features.")
 
     profiler = _get_profiler()
     profile = profiler.profile()
@@ -747,6 +1344,11 @@ def prompt(
         if optimize_for:
             preferences["optimize_for"] = optimize_for
             console.print_info(f"Optimizing for: {optimize_for}")
+        if cpu_only and optimize_for == "training":
+            console.print_warning(
+                "--cpu-only and --optimize-for training may conflict. "
+                "GPU packages will not be installed."
+            )
 
         console.print_packages_table(packages, "Suggested Packages")
 
@@ -755,10 +1357,26 @@ def prompt(
 
         # Ask for environment name and path
         default_path = str(Path.home() / "Documents" / "envs")
-        env_path = (
-            path or input(f"\nPath [default: {default_path}]: ").strip() or default_path
-        )
-        env_name = name or input("Name: ").strip() or f"env_{int(time.time())}"
+        try:
+            env_path = (
+                path
+                or input(f"\nPath [default: {default_path}]: ").strip()
+                or default_path
+            )
+            env_name = name or input("Name: ").strip() or f"env_{int(time.time())}"
+        except (KeyboardInterrupt, EOFError):
+            console.print_warning("\nAborted.")
+            return
+
+        if not _validate_path(env_path):
+            console.print_error("Invalid path. Path traversal not allowed.")
+            return
+
+        if not _ENV_NAME_RE.match(env_name):
+            console.print_error(
+                "Invalid name. Use only letters, numbers, underscore, hyphen, and dot."
+            )
+            return
 
         # Resolve and install
         _resolve_and_install(
@@ -772,6 +1390,7 @@ def prompt(
             original_command=f"envio prompt '{user_input}'",
             dry_run=dry_run,
             skip_confirm=yes,
+            verbose=verbose,
         )
 
     except Exception as e:
@@ -780,10 +1399,16 @@ def prompt(
             console._safe_print(traceback.format_exc())
 
 
-@cli.command()
+@cli.command(short_help="envio doctor                   Check system hardware profile")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def doctor(verbose: bool) -> None:
-    """Show system hardware profile."""
+    """Show system hardware profile.
+
+    \b
+    Examples:
+        envio doctor
+        envio doctor -v
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Doctor", "System hardware profile")
@@ -805,14 +1430,16 @@ def doctor(verbose: bool) -> None:
             console._safe_print(f"  - {pm}: {status}")
 
         # Check LLM configuration
+        from envio.config import get_api_key, get_model
+
         console.print_info("LLM configuration:")
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = get_api_key()
         if api_key:
             console._safe_print("  - API Key: [green]configured[/green]")
         else:
             console._safe_print("  - API Key: [red]not set[/red]")
 
-        model = os.getenv("ENVIO_LLM_MODEL", "gpt-4o-mini")
+        model = get_model()
         console._safe_print(f"  - Model: {model}")
 
     except Exception as e:
@@ -821,7 +1448,7 @@ def doctor(verbose: bool) -> None:
             console._safe_print(traceback.format_exc())
 
 
-@cli.command()
+@cli.command(short_help="envio install numpy pandas    Install packages directly")
 @click.argument("packages", nargs=-1, required=True)
 @click.option("--env-type", "-e", "env_type", default="uv", help="Package manager")
 @click.option("--name", "-n", default=None, help="Environment name")
@@ -848,7 +1475,16 @@ def install(
     yes: bool,
     verbose: bool,
 ) -> None:
-    """Install packages directly."""
+    """Install packages directly.
+
+    \b
+    Examples:
+        envio install requests
+        envio install numpy pandas scikit-learn
+        envio install "numpy>=1.24" "pandas>=2.0"
+        envio install flask --manager pip
+        envio install flask --dry-run
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Install", "Direct package installation")
@@ -896,6 +1532,7 @@ def install(
             original_command=" ".join(cmd_parts),
             dry_run=dry_run,
             skip_confirm=yes,
+            verbose=verbose,
         )
 
     except Exception as e:
@@ -904,7 +1541,7 @@ def install(
             console._safe_print(traceback.format_exc())
 
 
-@cli.command()
+@cli.command(short_help="envio lock -n my-env          Generate reproducible lockfile")
 @click.option("--name", "-n", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Environment path")
 @click.option(
@@ -925,7 +1562,14 @@ def lock(
     fmt: str,
     verbose: bool,
 ) -> None:
-    """Generate a lockfile for reproducible environments."""
+    """Generate a lockfile for reproducible environments.
+
+    \b
+    Examples:
+        envio lock -n my-env
+        envio lock -n my-env -o requirements.lock
+        envio lock -n my-env --format text
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Lock", "Generate reproducible lockfile")
@@ -941,14 +1585,45 @@ def lock(
 
         # Find the environment
         env_path = Path(path) if path else None
-        if not env_path:
-            # Search in default location
-            default_base = Path.home() / "Documents" / "envs"
-            if name:
-                env_path = default_base / name
+
+        if not env_path and name:
+            # Check registry first
+            from envio.core.registry import EnvironmentRegistry
+
+            registry = EnvironmentRegistry()
+            reg_entry = registry.get(name)
+            if reg_entry:
+                env_path = Path(reg_entry["path"])
             else:
-                # Search current directory
-                env_path = Path.cwd() / ".venv"
+                # Not in registry, try default location from config
+                from envio.config import get_default_envs_dir
+
+                default_base = get_default_envs_dir(prompt=False)[0]
+                if default_base:
+                    env_path = Path(default_base) / name
+                else:
+                    env_path = None
+
+                if not env_path or not manager.exists(env_path):
+                    # Not at default location, ask user
+                    console.print_warning(
+                        f"Environment '{name}' not found in registry or at default location."
+                    )
+                    try:
+                        user_path = input("Enter path to the environment: ").strip()
+                    except (KeyboardInterrupt, EOFError):
+                        console.print_warning("\nAborted.")
+                        return
+                    if user_path:
+                        env_path = Path(user_path)
+                    else:
+                        console.print_error("No path provided.")
+                        return
+                        return
+
+        if not env_path:
+            # No name provided, use current directory
+            env_path = Path.cwd() / ".venv"
 
         if not manager.exists(env_path):
             console.print_error(f"Virtual environment not found at: {env_path}")
@@ -992,6 +1667,16 @@ def lock(
         # Determine output file
         output_path = Path(output) if output else Path("envio.lock")
 
+        if output_path.exists():
+            console.print_warning(f"{output_path} already exists.")
+            if not console.confirm("Overwrite?", default=False):
+                console.print_warning("Aborted. No lockfile was created.")
+                return
+
+        if not _is_writable(output_path):
+            console.print_error(f"Cannot write to {output_path}. Check permissions.")
+            return
+
         if fmt == "json":
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(lock_data, f, indent=2, ensure_ascii=False)
@@ -1017,7 +1702,9 @@ def lock(
             console._safe_print(traceback.format_exc())
 
 
-@cli.command()
+@cli.command(
+    short_help="envio export -n my-env         Export to Dockerfile/requirements"
+)
 @click.option("--name", "-n", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Environment path")
 @click.option("--output", "-o", default=None, help="Output file path")
@@ -1036,7 +1723,14 @@ def export(
     fmt: str,
     verbose: bool,
 ) -> None:
-    """Export environment configuration to various formats."""
+    """Export environment configuration to various formats.
+
+    \b
+    Examples:
+        envio export -n my-env --format requirements
+        envio export -n my-env --format dockerfile
+        envio export -n my-env --format devcontainer
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Export", f"Export to {fmt} format")
@@ -1050,14 +1744,44 @@ def export(
 
         # Find the environment
         env_path = Path(path) if path else None
-        if not env_path:
-            # Search in default location
-            default_base = Path.home() / "Documents" / "envs"
-            if name:
-                env_path = default_base / name
+
+        if not env_path and name:
+            # Check registry first
+            from envio.core.registry import EnvironmentRegistry
+
+            registry = EnvironmentRegistry()
+            reg_entry = registry.get(name)
+            if reg_entry:
+                env_path = Path(reg_entry["path"])
             else:
-                # Search current directory
-                env_path = Path.cwd() / ".venv"
+                # Not in registry, try default location from config
+                from envio.config import get_default_envs_dir
+
+                default_base = get_default_envs_dir(prompt=False)[0]
+                if default_base:
+                    env_path = Path(default_base) / name
+                else:
+                    env_path = None
+
+                if not env_path or not manager.exists(env_path):
+                    # Not at default location, ask user
+                    console.print_warning(
+                        f"Environment '{name}' not found in registry or at default location."
+                    )
+                    try:
+                        user_path = input("Enter path to the environment: ").strip()
+                    except (KeyboardInterrupt, EOFError):
+                        console.print_warning("\nAborted.")
+                        return
+                    if user_path:
+                        env_path = Path(user_path)
+                    else:
+                        console.print_error("No path provided.")
+                        return
+
+        if not env_path:
+            # No name provided, use current directory
+            env_path = Path.cwd() / ".venv"
 
         if not manager.exists(env_path):
             console.print_error(f"Virtual environment not found at: {env_path}")
@@ -1097,6 +1821,16 @@ def export(
 
         # Determine output file
         output_path = Path(output) if output else Path(default_output)
+
+        if output_path.exists():
+            console.print_warning(f"{output_path} already exists.")
+            if not console.confirm("Overwrite?", default=False):
+                console.print_warning("Aborted. No file was exported.")
+                return
+
+        if not _is_writable(output_path):
+            console.print_error(f"Cannot write to {output_path}. Check permissions.")
+            return
 
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -1178,7 +1912,9 @@ def _generate_devcontainer_export(
     return json.dumps(devcontainer, indent=2) + "\n"
 
 
-@cli.command()
+@cli.command(
+    short_help="envio audit -n my-env         Scan for security vulnerabilities"
+)
 @click.option("--name", "-n", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Environment path")
 @click.option(
@@ -1196,7 +1932,15 @@ def audit(
     fix: bool,
     verbose: bool,
 ) -> None:
-    """Scan environment for known vulnerabilities."""
+    """Scan environment for known vulnerabilities.
+
+    \b
+    Examples:
+        envio audit
+        envio audit -n my-env
+        envio audit -n my-env --severity high
+        envio audit -n my-env --fix
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Audit", "Security vulnerability scan")
@@ -1389,7 +2133,7 @@ def audit(
             console._safe_print(traceback.format_exc())
 
 
-@cli.command("resurrect")
+@cli.command("resurrect", short_help="Analyze dead repos and generate requirements")
 @click.argument("source")
 @click.option("--name", "-n", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Installation path")
@@ -1402,17 +2146,23 @@ def resurrect(
     env_type: str,
     verbose: bool,
 ) -> None:
-    """Resurrect dead repositories by analyzing imports and generating requirements."""
+    """Analyze dead repositories, detect imports, and generate requirements.txt."""
     _load_dotenv()
     from envio.commands.resurrect import resurrect_command
 
     resurrect_command(source, name, path, env_type, verbose)
 
 
-@cli.command("list")
+@cli.command("list", short_help="envio list                  List all environments")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def list_envs(verbose: bool) -> None:
-    """List environments created by envio."""
+    """List environments created by envio.
+
+    \b
+    Examples:
+        envio list
+        envio list -v
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio List", "Environments created by envio")
@@ -1470,12 +2220,18 @@ def list_envs(verbose: bool) -> None:
             console._safe_print(traceback.format_exc())
 
 
-@cli.command()
+@cli.command(short_help="envio activate -n my-env       Show activation command")
 @click.option("--env", "-e", "env_name", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Environment path")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def activate(env_name: str | None, path: str | None, verbose: bool) -> None:
-    """Show activation command for a virtual environment."""
+    """Show activation command for a virtual environment.
+
+    \b
+    Examples:
+        envio activate -n my-env
+        envio activate -p /path/to/env
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Activate", "Show activation command")
@@ -1524,7 +2280,7 @@ def activate(env_name: str | None, path: str | None, verbose: bool) -> None:
             console._safe_print(traceback.format_exc())
 
 
-@cli.command()
+@cli.command(short_help="envio remove numpy -n my-env    Remove packages from env")
 @click.argument("packages", nargs=-1, required=True)
 @click.option("--env", "-e", "env_name", default=None, help="Environment name")
 @click.option("--path", "-p", default=None, help="Environment path")
@@ -1537,7 +2293,14 @@ def remove(
     yes: bool,
     verbose: bool,
 ) -> None:
-    """Remove packages from a virtual environment."""
+    """Remove packages from a virtual environment.
+
+    \b
+    Examples:
+        envio remove numpy -n my-env
+        envio remove package1 package2 -n my-env
+        envio remove numpy pandas -n my-env -y
+    """
     _load_dotenv()
     console = _get_console(verbose)
     console.print_header("Envio Remove", "Remove packages from environment")
@@ -1568,7 +2331,7 @@ def remove(
             console.print_warning("This will permanently uninstall these packages.")
             response = input("Continue? [y/N]: ").strip().lower()
             if response != "y":
-                console.print_info("Cancelled.")
+                console.print_warning("Aborted. No packages were removed.")
                 return
 
         console.print_info("Uninstalling...")

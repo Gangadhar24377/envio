@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -34,7 +36,15 @@ class EnvironmentRegistry:
                 # Convert list format to dict format
                 return self._convert_from_list(data)
             return data if isinstance(data, dict) else {}
-        except (json.JSONDecodeError, FileNotFoundError):
+        except json.JSONDecodeError:
+            import sys
+
+            print(
+                f"Warning: Registry file is corrupted: {self._registry_path}",
+                file=sys.stderr,
+            )
+            return {}
+        except FileNotFoundError:
             return {}
 
     def _convert_from_list(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -55,8 +65,40 @@ class EnvironmentRegistry:
     def _write_registry(self, data: dict[str, Any]) -> None:
         """Write the registry to disk."""
         self._registry_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._registry_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+
+        # Check for lock file from another process
+        lock_path = self._registry_path.with_suffix(".lock")
+        if lock_path.exists():
+            import time
+
+            # Wait briefly for any other process to finish
+            for _ in range(10):
+                time.sleep(0.1)
+                if not lock_path.exists():
+                    break
+            else:
+                import sys
+
+                print(
+                    "Warning: Registry may be in use by another process.",
+                    file=sys.stderr,
+                )
+
+        # Create lock file
+        try:
+            lock_path.write_text(str(os.getpid()))
+        except Exception:
+            pass  # Lock file is advisory, continue anyway
+
+        try:
+            with open(self._registry_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        finally:
+            # Remove lock file
+            try:
+                lock_path.unlink()
+            except Exception:
+                pass
 
     def register(
         self,
@@ -76,13 +118,21 @@ class EnvironmentRegistry:
             command: Original command used to create
         """
         data = self._read_registry()
-        data[name] = {
-            "path": path,
-            "packages": packages,
-            "manager": manager,
-            "command": command,
-            "created_at": datetime.now().isoformat(),
-        }
+        if name in data:
+            # Update existing entry instead of silently overwriting
+            data[name]["path"] = path
+            data[name]["packages"] = packages
+            data[name]["manager"] = manager
+            data[name]["command"] = command
+            data[name]["updated_at"] = datetime.now().isoformat()
+        else:
+            data[name] = {
+                "path": path,
+                "packages": packages,
+                "manager": manager,
+                "command": command,
+                "created_at": datetime.now().isoformat(),
+            }
         self._write_registry(data)
 
     def remove(self, name: str) -> bool:

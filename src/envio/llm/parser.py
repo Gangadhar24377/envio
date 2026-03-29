@@ -30,12 +30,21 @@ class ResponseParser:
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
-            json_match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
-            if json_match:
-                try:
-                    return json.loads(json_match.group())
-                except json.JSONDecodeError:
-                    pass
+            # Try to find nested JSON by matching balanced braces
+            depth = 0
+            start = -1
+            for i, ch in enumerate(text):
+                if ch == "{":
+                    if depth == 0:
+                        start = i
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0 and start >= 0:
+                        try:
+                            return json.loads(text[start : i + 1])
+                        except json.JSONDecodeError:
+                            start = -1
             raise ValueError(f"Could not parse JSON from response: {e}") from None
 
     @staticmethod

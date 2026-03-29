@@ -2,75 +2,84 @@
 
 from __future__ import annotations
 
-NLP_SYSTEM_PROMPT = """You are an expert at parsing natural language requests for Python environment setup.
-You extract package information, project context, and user preferences from user input.
-Always respond with valid JSON.
+NLP_SYSTEM_PROMPT = """You are an expert Python environment architect. Given a natural language request, you determine exactly which Python packages are needed.
 
-IMPORTANT: Detect user preferences ONLY from their explicit input:
-- CPU-only mode: Only if user says "CPU only", "no GPU", "don't use GPU", "without GPU"
-- GPU mode: Only if user says "use GPU", "with CUDA", "GPU", "CUDA 12", "CUDA 11"
-- Package manager: "pip", "conda", "uv", "poetry"
-- Python version: "Python 3.11", "Python 3.10", etc.
-- Environment path: "in folder X", "at path X", "in directory X"
-- Optimization target: "for training", "for inference", "for development"
+## CRITICAL: DOMAIN-FIRST ANALYSIS
 
-CRITICAL RULES:
-- Do NOT assume GPU mode just because hardware shows a GPU is available
-- Do NOT add torch/torchvision unless user explicitly asks for GPU or ML training
-- If user doesn't specify CPU/GPU preference, default to cpu_only: false and gpu_optimized: false
-- Only include GPU packages if user explicitly mentions "use GPU", "with CUDA", "train model", etc.
+Before suggesting ANY packages, you MUST identify the primary domain(s) of the request. The domain determines which packages are relevant. Do NOT default to generic data science packages unless the request is explicitly about data analysis.
 
-INTELLIGENT PACKAGE SELECTION:
-Analyze the user's request and suggest packages based on:
-1. What type of project/app they want to build (web, ML, agents, automation, data science, etc.)
-2. What specific libraries/frameworks they mention or imply
-3. What's commonly needed for that type of project
+## DOMAIN CATEGORIES (equal priority - no domain is preferred over another)
 
-You are intelligent - don't rely on hardcoded lists. Think about what packages would be needed for:
-- The user's specific request
-- The project type they're describing
-- Common dependencies for that domain
+**AI Agents & Orchestration**: autonomous agents, multi-agent systems, agent frameworks, tool-using agents, agent orchestration, conversational agents, agent pipelines, agentic workflows
+**Web Development**: web apps, REST APIs, GraphQL, web servers, frontend/backend, microservices, web frameworks, ASGI/WSGI
+**Data Science & Analytics**: data analysis, data cleaning, visualization, statistical analysis, exploratory data analysis, dashboards, reporting
+**Machine Learning**: model training, classification, regression, clustering, feature engineering, model evaluation, AutoML
+**Deep Learning**: neural networks, CNNs, RNNs, transformers, model architectures, transfer learning, fine-tuning
+**Natural Language Processing**: text processing, sentiment analysis, named entity recognition, text classification, language models, embeddings, RAG, semantic search, chatbots
+**Computer Vision**: image processing, object detection, image classification, video analysis, OCR, image generation
+**MLOps & Deployment**: model serving, experiment tracking, model registry, CI/CD for ML, containerization, monitoring
+**Data Engineering**: ETL pipelines, data warehousing, stream processing, data validation, workflow orchestration, data lakes
+**DevOps & Infrastructure**: cloud SDKs, infrastructure as code, monitoring, logging, configuration management
+**IoT & Embedded**: sensor data, MQTT, serial communication, edge computing, device management
+**Scientific Computing**: numerical simulation, differential equations, optimization, signal processing, bioinformatics, chemistry
+**Security & Cryptography**: encryption, authentication, vulnerability scanning, pen testing, certificate management
+**Automation & Scraping**: web scraping, browser automation, task scheduling, RPA, workflow automation
+**Database & Storage**: ORMs, database drivers, caching, search engines, object storage
+**Audio & Music**: audio processing, speech recognition, text-to-speech, music generation, audio analysis
+**Game Development**: game engines, physics simulation, 2D/3D rendering, game AI
+**Finance & Trading**: quantitative analysis, backtesting, market data, portfolio optimization, risk analysis
+**Geospatial**: mapping, GIS, satellite imagery, geocoding, spatial analysis
+**Robotics & Control**: robot frameworks, motion planning, SLAM, control systems, simulation
 
-For example:
-- If they say "agentic system" or "AI agent" → think: crewai, langchain, openai, autogen, etc.
-- If they say "web scraper" → think: requests, beautifulsoup4, selenium, scrapy
-- If they say "data pipeline" → think: pandas, apache-airflow, luigi, prefect
-- If they say "REST API" → think: fastapi, flask, django, starlette
-- If they say "ML model" → think: scikit-learn, tensorflow, pytorch, xgboost
-- If they say "chatbot" → think: transformers, openai, langchain, chainlit
-- If they say "dashboard" → think: streamlit, dash, panel, gradio
-- If they say "image processing" → think: pillow, opencv-python, scikit-image
-- If they say "NLP" → think: spacy, nltk, transformers, gensim
+## RULES
 
-Think creatively about what packages would help the user achieve their goal.
+1. IDENTIFY the domain(s) FIRST, then select packages specific to those domains
+2. Prioritize domain-specific packages over generic utility packages
+3. Only add generic packages (numpy, pandas, etc.) if the domain genuinely requires them
+4. Use exact PyPI package names
+5. Only include GPU packages if user explicitly requests GPU/CUDA/training
+6. Be comprehensive within the identified domain(s)
+7. Respond with valid JSON only"""
 
-Always explain your reasoning briefly."""
+NLP_USER_PROMPT = """Analyze this request and determine the EXACT Python packages needed.
 
-NLP_USER_PROMPT = """User request: {user_input}
+USER REQUEST:
+{user_input}
 
-Hardware information (for reference only - do not assume GPU mode based on this):
+HARDWARE CONTEXT (reference only - do not assume GPU unless explicitly requested):
 {hardware_context}
 
-Extract and suggest packages for this environment. Consider:
-1. What packages are directly mentioned by the user?
-2. What packages are typically needed for this type of project?
-3. What preferences did the user EXPLICITLY express? (Do not assume based on hardware)
-4. What package manager is best suited (pip/conda/uv)?
+## ANALYSIS STEPS (follow in order)
 
-Respond with JSON:
+STEP 1 - IDENTIFY DOMAIN(S): What domain(s) does this request fall into? (e.g., AI Agents, Web Dev, NLP, Data Engineering, etc.)
+STEP 2 - IDENTIFY KEY CONCEPTS: What specific concepts are mentioned? (e.g., "multi-agent" = agent frameworks, "customer service data" = NLP + data processing, "REST API" = web framework + serialization)
+STEP 3 - MAP CONCEPTS TO PACKAGES: For EACH concept identified, what are the most appropriate and widely-used Python packages in that specific domain?
+STEP 4 - ADD SUPPORTING PACKAGES: What essential supporting packages do the domain-specific packages need?
+
+## IMPORTANT
+
+- Do NOT suggest generic data science packages (numpy, pandas, matplotlib, scikit-learn) unless the request explicitly involves data analysis, numerical computation, or visualization
+- Focus on packages that DIRECTLY address what the user described
+- Every package you suggest must have a clear reason tied to the user's request
+- Prefer packages that are actively maintained and widely adopted in their domain
+
+## RESPONSE FORMAT
+
 {{
-    "packages": ["package1", "package2==version", ...],
+    "packages": ["package1", "package2", ...],
     "environment_type": "pip" or "conda" or "uv",
-    "project_type": "brief description of the project type",
+    "project_type": "brief description",
     "preferences": {{
-        "cpu_only": true/false (true ONLY if user says "CPU only", "no GPU", etc.),
-        "gpu_optimized": true/false (true ONLY if user says "use GPU", "with CUDA", etc.),
+        "cpu_only": boolean,
+        "gpu_optimized": boolean,
         "optimize_for": "training" or "inference" or "development" or null,
-        "python_version": "3.11" or null if not specified,
-        "install_path": "path" or null if not specified
+        "python_version": "3.11" or null,
+        "install_path": "path" or null
     }},
-    "reasoning": "brief explanation of why these packages were chosen"
-}}"""
+    "reasoning": "Step 1: Domain is X. Step 2: Key concepts are A, B, C. Step 3: Package mapping - A needs pkg1, B needs pkg2, C needs pkg3. Step 4: Supporting packages: pkg4 for ..."
+}}
+
+NO text outside JSON."""
 
 DEP_RESOLVE_SYSTEM_PROMPT = """You are an expert Python dependency resolver.
 You analyze package information and resolve conflicts.
@@ -181,21 +190,65 @@ Respond with JSON:
     "ml_optimizations": ["any ML-specific optimizations applied"]
 }}"""
 
-HEALING_SYSTEM_PROMPT = """You are a dependency conflict resolver.
-Given failed resolution errors, you suggest fixes.
+HEALING_SYSTEM_PROMPT = """You are an expert Python environment troubleshooting specialist.
+
+Given failed installation errors, you must diagnose the root cause and suggest precise fixes.
+
+You MUST analyze:
+1. The exact error type and message
+2. Platform-specific issues (Windows path quoting, Linux permissions, etc.)
+3. Package compatibility issues (conflicts, missing deps, wrong versions)
+4. Environment issues (Python version, package manager problems)
+5. Network issues (PyPI timeouts, index problems)
+
+Common fixes to consider:
+- Windows: Single quotes in paths don't work in PowerShell - use double quotes or no quotes
+- Version conflicts: Use compatible versions or remove strict constraints
+- Missing deps: Add required dependencies
+- Platform-specific packages: Use -windows wheels on Windows
+- PyTorch: Use correct CUDA version or CPU-only version
+- TensorFlow: Use tensorflow-cpu if no GPU needed
+- Path issues: Ensure paths don't have spaces or special chars, or are properly quoted
+
 Always respond with valid JSON."""
 
-HEALING_USER_PROMPT = """Resolution failed with error:
+HEALING_USER_PROMPT = """A Python environment installation failed. You need to diagnose and fix it.
 
+ERROR MESSAGE:
 {error}
 
-Packages attempted: {packages}
+STDOUT:
+{stdout}
 
-Analyze the error and suggest a fix.
-Respond with JSON:
+STDERR:
+{stderr}
+
+PACKAGE MANAGER: {package_manager}
+OPERATING SYSTEM: {os_type}
+ENVIRONMENT PATH: {env_path}
+
+ORIGINAL PACKAGES REQUESTED:
+{packages}
+
+RESOLUTION STATUS: {resolution_status}
+
+Your task:
+1. Analyze the full error (not just the first line)
+2. Identify the ROOT CAUSE
+3. Suggest specific fixes
+
+IMPORTANT: 
+- If it's a Windows path error with quotes, fix the path escaping
+- If it's a package conflict, suggest compatible versions
+- If it's a missing dependency, add it to the list
+- If it's a platform issue (Windows vs Linux), suggest platform-specific packages
+
+Respond with ONLY valid JSON (no markdown, no explanation):
 {{
-    "fixed_packages": ["package1==version", ...],
-    "explanation": "what was wrong and how you fixed it"
+    "fixed_packages": ["package1==version", "package2", ...],
+    "explanation": "what was wrong and exactly how you fixed it",
+    "root_cause": "the actual root cause of the error",
+    "warnings": ["any warnings about the fix"]
 }}"""
 
 PLAN_DISPLAY_PROMPT = """Based on the following information, display a clear installation plan:

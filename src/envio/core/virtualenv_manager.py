@@ -265,6 +265,9 @@ class VirtualEnvManager:
 
         environments = []
         for item in base_path.iterdir():
+            # Skip symlinks to prevent issues
+            if item.is_symlink():
+                continue
             if item.is_dir() and self.exists(item):
                 # Try to get Python version
                 python_path = self.get_python_path(item)

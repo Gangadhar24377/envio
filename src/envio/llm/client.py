@@ -18,6 +18,14 @@ from tenacity import (
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_OLLAMA_MODEL = "llama3"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+DEFAULT_MODELS = {
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-3-sonnet-20240229",
+    "together": "together-ai-7b",
+    "cohere": "command",
+    "replicate": "replicate-7b",
+    "ollama": "llama3",
+}
 
 
 @dataclass
@@ -34,53 +42,113 @@ class LLMConfig:
 
     @classmethod
     def from_env(cls) -> LLMConfig:
-        """Create config from environment variables with auto-detection."""
-        openai_key = os.getenv("OPENAI_API_KEY")
-        custom_api_key = os.getenv("ENVIO_LLM_API_KEY")
-        env_model = os.getenv("ENVIO_LLM_MODEL", "").strip()
-        ollama_host = os.getenv("ENVIO_OLLAMA_HOST", DEFAULT_OLLAMA_HOST)
+        """Create config from config file, environment variables, or auto-detection.
 
-        ollama_available, available_models = _check_ollama(ollama_host)
+        Priority:
+        1. Config file (~/.envio/config.json)
+        2. Environment variables
+        3. Auto-detection (Ollama)
+        """
+        from envio.config import get_api_key, get_model, get_provider, load_config
 
-        if openai_key or custom_api_key:
-            provider = "openai"
-            model = env_model if env_model else DEFAULT_OPENAI_MODEL
-            return cls(
-                provider=provider,
-                model=model,
-                api_key=custom_api_key or openai_key,
-                api_base=os.getenv("ENVIO_LLM_API_BASE"),
-                temperature=float(os.getenv("ENVIO_LLM_TEMPERATURE", "0")),
-                max_tokens=int(os.getenv("ENVIO_LLM_MAX_TOKENS", "4096")),
-            )
+        config = load_config()
 
-        if ollama_available:
-            provider = "ollama"
-            if env_model:
-                model = env_model
-            elif available_models:
-                model = (
-                    DEFAULT_OLLAMA_MODEL
-                    if DEFAULT_OLLAMA_MODEL in available_models
-                    else available_models[0]
-                )
-            else:
+        # Try config file first
+        api_key = get_api_key()
+        provider = get_provider()
+        model = get_model()
+
+        # Get Ollama host from config or env
+        ollama_host = config.get("ollama_host") or os.getenv(
+            "ENVIO_OLLAMA_HOST", DEFAULT_OLLAMA_HOST
+        )
+
+        # Get temperature and max_tokens from env (or defaults)
+        try:
+            temperature = float(os.getenv("ENVIO_LLM_TEMPERATURE", "0"))
+        except (ValueError, TypeError):
+            temperature = 0.0
+        try:
+            max_tokens = int(os.getenv("ENVIO_LLM_MAX_TOKENS", "4096"))
+        except (ValueError, TypeError):
+            max_tokens = 4096
+
+        # Handle Ollama (no API key needed)
+        if provider == "ollama":
+            ollama_available, available_models = _check_ollama(ollama_host)
+            if not ollama_available:
                 raise ValueError(
-                    "Ollama is running but no models found. "
-                    "Please pull a model: ollama pull <model_name>"
+                    "Ollama is not running. Please start Ollama or use a different provider:\n"
+                    "  envio config api <your-key>"
                 )
+
+            # Validate model exists
+            if model and model not in available_models:
+                if available_models:
+                    model = available_models[0]
+                else:
+                    raise ValueError(
+                        "Ollama is running but no models found.\n"
+                        "Please pull a model: ollama pull <model_name>"
+                    )
+
             return cls(
-                provider=provider,
+                provider="ollama",
                 model=model,
                 api_base=ollama_host,
-                temperature=float(os.getenv("ENVIO_LLM_TEMPERATURE", "0")),
-                max_tokens=int(os.getenv("ENVIO_LLM_MAX_TOKENS", "4096")),
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
 
-        raise ValueError(
-            f"No LLM provider available. Please set one of:\n"
-            f"  - OPENAI_API_KEY in .env (recommended: {DEFAULT_OPENAI_MODEL})\n"
-            f"  - Or ensure Ollama is running with a model pulled"
+        # Handle API-based providers
+        if not api_key:
+            # Check environment variables as fallback
+            openai_key = os.getenv("OPENAI_API_KEY")
+            custom_api_key = os.getenv("ENVIO_LLM_API_KEY")
+            api_key = custom_api_key or openai_key
+
+            if api_key:
+                # Determine provider from key
+                if api_key.startswith("sk-ant-"):
+                    provider = "anthropic"
+                else:
+                    provider = "openai"
+
+                # Get model from env if not in config
+                env_model = os.getenv("ENVIO_LLM_MODEL", "").strip()
+                if not model:
+                    model = env_model or DEFAULT_MODELS.get(
+                        provider, DEFAULT_OPENAI_MODEL
+                    )
+
+        if not api_key:
+            # Check if Ollama is available as fallback
+            ollama_available, available_models = _check_ollama(ollama_host)
+            if ollama_available and available_models:
+                return cls(
+                    provider="ollama",
+                    model=available_models[0],
+                    api_base=ollama_host,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+
+            raise ValueError(
+                "No LLM provider configured. Please set one:\n"
+                "  envio config api <your-api-key>  # For OpenAI, Anthropic, etc.\n"
+                "  Or ensure Ollama is running with a model pulled"
+            )
+
+        # Build API base from config or env
+        api_base = config.get("api_base") or os.getenv("ENVIO_LLM_API_BASE")
+
+        return cls(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            api_base=api_base,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
 
