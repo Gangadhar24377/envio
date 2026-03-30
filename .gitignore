@@ -82,6 +82,9 @@ setup_env.sh
 envio_setup_*.ps1
 envio_setup_*.sh
 
+# Internal docs (local only — not for public repo)
+docs/internal/
+
 # Secrets / credentials
 *.pem
 *.key
