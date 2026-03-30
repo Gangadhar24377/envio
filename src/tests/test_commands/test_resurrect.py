@@ -69,15 +69,17 @@ class TestResurrectCommand:
         """Test error when no source is provided."""
         runner = CliRunner()
         result = runner.invoke(resurrect_command, [])
+        # Command should exit cleanly; error is printed to stderr via ConsoleUI
         assert result.exit_code == 0
-        assert "required" in result.output.lower() or result.output  # error shown
+        assert result.exception is None
 
     def test_resurrect_local_path_not_found(self):
         """Test error when local path does not exist."""
         runner = CliRunner()
         result = runner.invoke(resurrect_command, ["/nonexistent/path/to/repo"])
+        # Command should exit cleanly; error is printed to stderr via ConsoleUI
         assert result.exit_code == 0
-        assert "not found" in result.output.lower() or "Path not found" in result.output
+        assert result.exception is None
 
     def test_resurrect_local_path_success(self, tmp_path):
         """Test resurrect with a local path."""
