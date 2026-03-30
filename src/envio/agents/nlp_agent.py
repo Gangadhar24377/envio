@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from envio.llm.client import LLMClient, LLMConfig

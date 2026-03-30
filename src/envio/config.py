@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -154,7 +153,6 @@ def set_serper_api_key(api_key: str) -> None:
     config = load_config()
     config["serper_api_key"] = api_key
     save_config(config)
-    return provider
 
 
 def set_provider(provider: str) -> None:

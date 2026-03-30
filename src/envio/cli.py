@@ -706,7 +706,7 @@ def _parse_environment_yml(filepath: Path, filename: str) -> dict:
 @click.group(
     context_settings={"help_option_names": ["-h", "--help"], "max_content_width": 120},
 )
-@click.version_option(version="0.1.0", prog_name="envio")
+@click.version_option(version=__version__, prog_name="envio")
 def cli() -> None:
     """Envio - AI-Native Environment Orchestrator.
 
@@ -1618,7 +1618,6 @@ def lock(
                         env_path = Path(user_path)
                     else:
                         console.print_error("No path provided.")
-                        return
                         return
 
         if not env_path:

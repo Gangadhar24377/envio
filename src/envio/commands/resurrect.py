@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from envio.analysis.import_analyzer import ImportAnalyzer
@@ -269,9 +270,7 @@ def _analyze_directory(
             f"\n{req_path} already exists. Overwrite?", default=True
         ):
             # Save with timestamp suffix instead
-            req_path = (
-                directory / f"requirements_envio_{int(__import__('time').time())}.txt"
-            )
+            req_path = directory / f"requirements_envio_{int(time.time())}.txt"
     with open(req_path, "w") as f:
         f.write(requirements_content)
     console.print_success(f"Saved to: {req_path}")

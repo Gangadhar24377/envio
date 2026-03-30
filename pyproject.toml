@@ -11,17 +11,14 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
 ]
-
-[project.urls]
-Homepage = "https://github.com/Gangadhar24377/envio.git"
-Repository = "https://github.com/Gangadhar24377/envio.git"
-Issues = "https://github.com/Gangadhar24377/envio.git/issues"
-
 dependencies = [
     "litellm>=1.47.0,<=1.82.6",  # DO NOT upgrade beyond 1.82.6 - versions 1.82.7+ are infected
     "requests>=2.32.0",
@@ -36,6 +33,11 @@ dependencies = [
     "pyyaml>=6.0",
     "pip-audit",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Gangadhar24377/envio"
+Repository = "https://github.com/Gangadhar24377/envio"
+Issues = "https://github.com/Gangadhar24377/envio/issues"
 
 [project.optional-dependencies]
 dev = [
