@@ -77,6 +77,7 @@ Thumbs.db
 tmux-*.log
 
 # Project specific
+src/envio/.cache/
 setup_env.sh
 envio_setup_*.ps1
 envio_setup_*.sh

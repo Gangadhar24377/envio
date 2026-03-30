@@ -6,7 +6,8 @@ The following versions of Envio are currently supported with security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+| 0.3.x   | :white_check_mark: |
+| 0.1.x   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -110,4 +111,4 @@ Security updates will be released as patch versions. We follow semantic versioni
 
 ## Attribution
 
-This security policy is adapted from best practices for open-source projects.
+This security policy reflects the actual security practices of the Envio project.

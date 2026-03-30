@@ -37,8 +37,6 @@ class VirtualEnvManager:
                         cmd = ["py", f"-{python_version}", "-m", "venv", str(path)]
                     else:
                         # Fall back to current Python but warn
-                        import sys
-
                         cmd = [sys.executable, "-m", "venv", str(path)]
                 else:
                     # On Unix, use pythonX.Y

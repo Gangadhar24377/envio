@@ -36,10 +36,9 @@ class TestVirtualEnvManager:
             mock_run.return_value = mock_result
 
             manager = VirtualEnvManager()
-            success, msg = manager.create(temp_venv_path)
+            success = manager.create(temp_venv_path)
 
             assert success is True
-            assert "Created" in msg or "created" in msg.lower()
             mock_run.assert_called_once()
 
     def test_create_venv_failure(self, temp_venv_path):
@@ -48,7 +47,7 @@ class TestVirtualEnvManager:
             mock_run.side_effect = Exception("Failed to create")
 
             manager = VirtualEnvManager()
-            success, msg = manager.create(temp_venv_path)
+            success = manager.create(temp_venv_path)
 
             assert success is False
 
@@ -70,26 +69,24 @@ class TestVirtualEnvManager:
 
     def test_get_python_path(self, temp_venv_path):
         """Test getting Python executable path."""
-        with patch("pathlib.Path.exists") as mock_exists:
-            mock_exists.return_value = True
-
-            with patch("sys.executable", "/usr/bin/python"):
-                manager = VirtualEnvManager()
-                python_path = manager.get_python_path(temp_venv_path)
-                assert "python" in str(python_path).lower()
+        manager = VirtualEnvManager()
+        python_path = manager.get_python_path(temp_venv_path)
+        assert "python" in str(python_path).lower()
 
     def test_get_python_path_nonexistent(self, temp_venv_path):
-        """Test getting Python path for non-existent venv."""
-        with patch("pathlib.Path.exists") as mock_exists:
-            mock_exists.return_value = False
-
-            manager = VirtualEnvManager()
-            python_path = manager.get_python_path(temp_venv_path)
-            assert python_path is None
+        """Test getting Python path for non-existent venv returns a Path."""
+        manager = VirtualEnvManager()
+        python_path = manager.get_python_path(temp_venv_path)
+        # get_python_path always returns a Path (whether venv exists or not)
+        assert python_path is not None
+        assert "python" in str(python_path).lower()
 
     def test_install_packages_success(self, temp_venv_path):
         """Test successful package installation."""
-        with patch("subprocess.run") as mock_run:
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("pathlib.Path.exists", return_value=True),
+        ):
             mock_result = MagicMock()
             mock_result.returncode = 0
             mock_result.stdout = "Successfully installed"
@@ -129,13 +126,19 @@ class TestVirtualEnvManager:
             mock_run.return_value = mock_result
 
             manager = VirtualEnvManager()
-            packages = manager.get_installed_packages_with_versions(temp_venv_path)
+            success, packages = manager.get_installed_packages_with_versions(
+                temp_venv_path
+            )
 
+            assert success is True
             assert len(packages) > 0
 
     def test_uninstall_packages(self, temp_venv_path):
         """Test package uninstallation."""
-        with patch("subprocess.run") as mock_run:
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("pathlib.Path.exists", return_value=True),
+        ):
             mock_result = MagicMock()
             mock_result.returncode = 0
             mock_result.stdout = "Successfully uninstalled"

@@ -71,6 +71,8 @@ class TestSystemProfiler:
     def test_profile_caching(self):
         """Test that profile is cached."""
         profiler = SystemProfiler()
+        # Reset the cached profile to ensure a clean test regardless of singleton state
+        profiler._profile = None
         with patch.object(profiler, "detect_gpu") as mock_detect_gpu:
             mock_detect_gpu.return_value = GPUInfo(available=False)
 

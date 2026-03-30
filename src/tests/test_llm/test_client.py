@@ -185,20 +185,14 @@ class TestLLMResponse:
 class TestLLMConfigFromEnv:
     """Tests for LLMConfig.from_env() class method."""
 
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-key"})
-    @patch("envio.llm.client.load_config")
-    @patch("envio.llm.client.get_api_key")
-    @patch("envio.llm.client.get_provider")
-    @patch("envio.llm.client.get_model")
+    @patch("envio.config.get_model", return_value="gpt-4o")
+    @patch("envio.config.get_provider", return_value="openai")
+    @patch("envio.config.get_api_key", return_value="sk-test-key")
+    @patch("envio.config.load_config", return_value={})
     def test_from_env_with_openai_key(
-        self, mock_get_model, mock_get_provider, mock_get_api_key, mock_load_config
+        self, mock_load_config, mock_get_api_key, mock_get_provider, mock_get_model
     ):
         """Test creating config from environment with OpenAI key."""
-        mock_load_config.return_value = {}
-        mock_get_api_key.return_value = "sk-test-key"
-        mock_get_provider.return_value = "openai"
-        mock_get_model.return_value = "gpt-4o"
-
         from envio.llm.client import LLMConfig
 
         config = LLMConfig.from_env()
@@ -206,29 +200,45 @@ class TestLLMConfigFromEnv:
         assert config.model == "gpt-4o"
         assert config.api_key == "sk-test-key"
 
-    @patch("envio.llm.client.load_config")
-    @patch("envio.llm.client._check_ollama")
-    def test_from_env_with_ollama(self, mock_check_ollama, mock_load_config):
+    @patch("envio.llm.client._check_ollama", return_value=(True, ["llama3", "mistral"]))
+    @patch("envio.config.get_model", return_value="llama3")
+    @patch("envio.config.get_provider", return_value="ollama")
+    @patch("envio.config.get_api_key", return_value=None)
+    @patch("envio.config.load_config", return_value={})
+    def test_from_env_with_ollama(
+        self,
+        mock_load_config,
+        mock_get_api_key,
+        mock_get_provider,
+        mock_get_model,
+        mock_check_ollama,
+    ):
         """Test creating config from environment with Ollama."""
-        mock_load_config.return_value = {}
-        mock_check_ollama.return_value = (True, ["llama3", "mistral"])
-
         from envio.llm.client import LLMConfig
 
         config = LLMConfig.from_env()
         assert config.provider == "ollama"
         assert "llama3" in config.model
 
-    @patch("envio.llm.client.load_config")
-    @patch("envio.llm.client._check_ollama")
+    @patch("envio.llm.client._check_ollama", return_value=(False, []))
+    @patch("envio.config.get_model", return_value="")
+    @patch("envio.config.get_provider", return_value="openai")
+    @patch("envio.config.get_api_key", return_value=None)
+    @patch("envio.config.load_config", return_value={})
     def test_from_env_raises_when_no_provider(
-        self, mock_check_ollama, mock_load_config
+        self,
+        mock_load_config,
+        mock_get_api_key,
+        mock_get_provider,
+        mock_get_model,
+        mock_check_ollama,
     ):
         """Test that ValueError is raised when no provider is configured."""
-        mock_load_config.return_value = {}
-        mock_check_ollama.return_value = (False, [])
-
         from envio.llm.client import LLMConfig
 
-        with pytest.raises(ValueError, match="No LLM provider configured"):
-            LLMConfig.from_env()
+        # Patch out env vars so no API key bleeds in from the environment
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OPENAI_API_KEY", None)
+            os.environ.pop("ENVIO_LLM_API_KEY", None)
+            with pytest.raises(ValueError, match="No LLM provider configured"):
+                LLMConfig.from_env()

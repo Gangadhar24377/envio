@@ -50,7 +50,7 @@ def cli() -> None:
     """Envio - AI-Native Environment Orchestrator.
 
     For detailed documentation and examples, see:
-    https://github.com/Gangadhar24377/envio/blob/main/COMMANDS.md
+    https://github.com/Gangadhar24377/envio/blob/master/COMMANDS.md
     """
     pass
 

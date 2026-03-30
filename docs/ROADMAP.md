@@ -42,14 +42,14 @@ A phase-wise todo list for transforming Envio into a production-ready open-sourc
 
 - [x] **1.3 CI/CD Setup**
   - [x] Create `.github/workflows/ci.yml`:
-    - Trigger on push and PR to main
-    - Run linting
-    - Run tests
-    - Run type checking
-  - [x] Create `.github/ISSUE_TEMPLATE/` directory:
-    - Bug report template
-    - Feature request template
-  - [x] Create `.github/PULL_REQUEST_TEMPLATE.md`
+        - Trigger on push and PR to main
+        - Run linting
+        - Run tests
+        - Run type checking
+  - [ ] Create `.github/ISSUE_TEMPLATE/` directory:
+        - Bug report template
+        - Feature request template
+  - [ ] Create `.github/PULL_REQUEST_TEMPLATE.md`
 
 - [x] **1.4 Documentation Foundation**
   - [x] Rewrite `README.md` with:

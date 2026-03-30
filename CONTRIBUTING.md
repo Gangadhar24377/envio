@@ -4,7 +4,7 @@ Thank you for your interest in contributing to Envio! This document outlines the
 
 ## Code of Conduct
 
-By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md). Please be respectful and constructive.
+Please be respectful and constructive in all interactions.
 
 ## Getting Started
 
@@ -68,8 +68,8 @@ Follow the coding standards:
 
 ```bash
 # Format code
-ruff check --fix .
-ruff format .
+ruff check --fix src/
+ruff format src/
 
 # Type check
 mypy src/envio
@@ -112,7 +112,7 @@ envio/
 ├── src/envio/           # Main source code
 │   ├── agents/          # AI agents (NLP, dependency resolution)
 │   ├── analysis/        # Code analysis (imports, versions, syntax)
-│   ├── commands/        # CLI commands (resurrect)
+│   ├── commands/        # CLI commands (activate, audit, config, doctor, export, init, install, list, lock, prompt, remove, resurrect)
 │   ├── core/            # Core utilities (executor, profiler)
 │   ├── llm/             # LLM client and parser
 │   ├── resolution/     # Dependency resolution
@@ -230,7 +230,7 @@ The `.env` file is in `.gitignore` and will not be committed.
 ## Submitting Changes
 
 1. Ensure all tests pass
-2. Run linters: `ruff check . && ruff format . && mypy src/envio`
+2. Run linters: `ruff check src/ && ruff format src/ && mypy src/envio`
 3. Update documentation if needed
 4. Commit with a clear message
 5. Push and create a Pull Request

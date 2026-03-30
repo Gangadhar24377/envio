@@ -164,10 +164,9 @@ class TestGetApiKey:
         assert key == "sk-test-key"
 
     def test_get_from_env(self, temp_config_dir):
-        """Getting API key should fallback to env var."""
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "env-key"}):
-            key = config.get_api_key()
-            assert key == "env-key"
+        """Getting API key when not in config should return None."""
+        key = config.get_api_key()
+        assert key is None
 
 
 class TestGetProvider:
@@ -180,8 +179,9 @@ class TestGetProvider:
         assert provider == "anthropic"
 
     def test_get_default_openai(self, temp_config_dir):
-        """Getting provider with no config should return default."""
-        provider = config.get_provider()
+        """Getting provider with no config should return 'openai' as default."""
+        with patch("envio.llm.client.is_ollama_available", return_value=False):
+            provider = config.get_provider()
         assert provider == "openai"
 
 

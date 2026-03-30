@@ -4,7 +4,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
-from envio.cli import cli, _validate_and_normalize_packages
+from envio.cli import cli
+from envio.cli_helpers import _validate_and_normalize_packages
 
 
 class TestCLI:
@@ -47,7 +48,7 @@ class TestCLI:
     def test_doctor_command(self):
         """Test doctor command."""
         runner = CliRunner()
-        with patch("envio.cli._get_profiler") as mock_profiler:
+        with patch("envio.cli_helpers._get_profiler") as mock_profiler:
             mock_profiler.return_value = MagicMock()
             result = runner.invoke(cli, ["doctor"])
             assert result.exit_code == 0

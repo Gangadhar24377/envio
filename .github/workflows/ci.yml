@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   test:
@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
       - uses: actions/checkout@v4
@@ -36,11 +36,9 @@ jobs:
 
       - name: Run type checking
         run: uv run mypy src/
-        continue-on-error: true
 
       - name: Run tests
         run: uv run pytest --cov=src --cov-report=xml
-        continue-on-error: true
 
       - name: Test doctor command
         run: uv run envio doctor
