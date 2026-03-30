@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import traceback
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -72,7 +73,7 @@ def install(
         # Validate and normalize packages
         validated_packages = _validate_and_normalize_packages(pkg_list, console)
 
-        preferences = {}
+        preferences: dict[str, Any] = {}
         if cpu_only:
             preferences["cpu_only"] = True
         if optimize_for:

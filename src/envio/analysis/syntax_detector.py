@@ -7,7 +7,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from packaging.version import Version
 
@@ -34,6 +34,7 @@ class DeprecatedPattern:
     era: str
     timeline: str
     weight: int = 1
+    description: str = ""
 
 
 class SyntaxDetector:
@@ -186,15 +187,16 @@ class SyntaxDetector:
 
         for line_num, line in enumerate(lines, 1):
             for pattern_name, pattern_info in all_patterns.items():
-                if re.search(pattern_info["regex"], line):
+                if re.search(str(pattern_info["regex"]), line):
                     patterns.append(
                         DeprecatedPattern(
                             name=pattern_name,
                             line=line_num,
                             code_snippet=line.strip(),
-                            era=pattern_info["era"],
-                            timeline=pattern_info["timeline"],
-                            weight=pattern_info.get("weight", 1),
+                            era=str(pattern_info["era"]),
+                            timeline=str(pattern_info["timeline"]),
+                            weight=cast(int, pattern_info.get("weight", 1)),
+                            description=str(pattern_info.get("description", "")),
                         )
                     )
 
