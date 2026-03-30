@@ -46,8 +46,9 @@ class TestSystemProfiler:
         """Test GPU detection when GPU is not available."""
         profiler = SystemProfiler()
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            gpu = profiler.detect_gpu()
-            assert gpu.available is False
+            with patch("platform.machine", return_value="x86_64"):
+                gpu = profiler.detect_gpu()
+                assert gpu.available is False
 
     def test_detect_shell(self):
         """Test shell detection."""
