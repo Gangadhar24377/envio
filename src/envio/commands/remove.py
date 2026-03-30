@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from envio.cli_helpers import _load_dotenv, _get_console
+from envio.cli_helpers import _get_console, _load_dotenv
 
 
 @click.command(short_help="envio remove numpy -n my-env    Remove packages from env")

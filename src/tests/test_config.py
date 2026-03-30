@@ -1,7 +1,6 @@
 """Tests for config.py - configuration management."""
 
 import json
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch

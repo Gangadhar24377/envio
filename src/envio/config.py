@@ -52,7 +52,7 @@ def load_config() -> dict[str, Any]:
     config_path = get_config_path()
     if config_path.exists():
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             pass
@@ -437,7 +437,7 @@ def setup_llm_first_run() -> None:
         print("\nSelect your model:")
         for i, m in enumerate(ollama_models, 1):
             print(f"  {i}. {m}")
-        model_choice = input(f"Choice [1]: ").strip() or "1"
+        model_choice = input("Choice [1]: ").strip() or "1"
         try:
             model = ollama_models[int(model_choice) - 1]
         except (ValueError, IndexError):
@@ -449,7 +449,7 @@ def setup_llm_first_run() -> None:
         config["model"] = model
         save_config(config)
 
-        print(f"\n[+] Provider: Ollama")
+        print("\n[+] Provider: Ollama")
         print(f"[+] Model: {model}")
 
     elif choice == "1":
@@ -484,7 +484,7 @@ def setup_llm_first_run() -> None:
                 masked = api_key[:8] + "..." + api_key[-4:]
             else:
                 masked = api_key[:4] + "..."
-            print(f"\n[+] Provider: OpenAI")
+            print("\n[+] Provider: OpenAI")
             print(f"[+] API key: {masked}")
             print(f"[+] Model: {model}")
 
@@ -517,7 +517,7 @@ def setup_llm_first_run() -> None:
                 masked = api_key[:8] + "..." + api_key[-4:]
             else:
                 masked = api_key[:4] + "..."
-            print(f"\n[+] Provider: Anthropic")
+            print("\n[+] Provider: Anthropic")
             print(f"[+] API key: {masked}")
             print(f"[+] Model: {model}")
 
@@ -530,7 +530,7 @@ def setup_llm_first_run() -> None:
         for i, p in enumerate(providers, 1):
             print(f"  {i}. {p}")
 
-        prov_choice = input(f"Choice [1]: ").strip() or "1"
+        prov_choice = input("Choice [1]: ").strip() or "1"
         try:
             provider = providers[int(prov_choice) - 1]
         except (ValueError, IndexError):

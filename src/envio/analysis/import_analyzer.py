@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from rich.progress import Progress
+    pass
 
 
 def get_stdlib_modules() -> set[str]:

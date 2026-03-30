@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 _CACHE_FILE = Path.home() / ".envio" / "cache" / "pattern_versions.json"
 
 _PATTERN_VERSION_CACHE: dict[str, dict[str, Any]] = {}
@@ -88,7 +87,7 @@ def _load_cache() -> dict[str, dict[str, Any]]:
 
     if _CACHE_FILE.exists():
         try:
-            with open(_CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(_CACHE_FILE, encoding="utf-8") as f:
                 data = json.load(f)
                 _PATTERN_VERSION_CACHE = {
                     k: v for k, v in data.items() if not k.startswith("_")
@@ -112,7 +111,7 @@ def _save_cache(pattern: str, info: dict[str, Any]) -> None:
         existing = {}
         if _CACHE_FILE.exists():
             try:
-                with open(_CACHE_FILE, "r", encoding="utf-8") as f:
+                with open(_CACHE_FILE, encoding="utf-8") as f:
                     existing = json.load(f)
             except (json.JSONDecodeError, OSError):
                 pass

@@ -1,7 +1,7 @@
 """Tests for CLI."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from click.testing import CliRunner
 
 from envio.cli import cli

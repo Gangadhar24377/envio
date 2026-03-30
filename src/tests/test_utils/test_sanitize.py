@@ -1,7 +1,6 @@
 """Tests for sanitize.py - shell command safety utilities."""
 
 import platform
-import shlex
 
 import pytest
 
@@ -136,7 +135,7 @@ class TestSanitizePackages:
         result = sanitize_packages(["numpy", "pandas", "flask"])
         assert len(result) == 3
         # All results should contain the original package name
-        for name, r in zip(["numpy", "pandas", "flask"], result):
+        for name, r in zip(["numpy", "pandas", "flask"], result, strict=False):
             assert name in r
 
     def test_empty_list(self):

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from envio.cli_helpers import _load_dotenv, _get_console
+from envio.cli_helpers import _get_console, _load_dotenv
 
 
 @click.command("list", short_help="envio list                  List all environments")
@@ -25,10 +25,11 @@ def list_envs(verbose: bool) -> None:
     console.print_header("Envio List", "Environments created by envio")
 
     try:
+        from datetime import datetime
+
         from rich.table import Table
 
         from envio.core.registry import EnvironmentRegistry
-        from datetime import datetime
 
         registry = EnvironmentRegistry()
         environments = registry.list_all()
@@ -48,7 +49,6 @@ def list_envs(verbose: bool) -> None:
         for env in environments:
             env_exists = Path(env["path"]).exists()
             name = env["name"] if env_exists else f"{env['name']} (missing)"
-            name_style = "cyan" if env_exists else "red"
 
             created = env.get("created_at", "")
             if created:

@@ -1,8 +1,5 @@
 """Tests for ImportAnalyzer."""
 
-import pytest
-from pathlib import Path
-
 from envio.analysis.import_analyzer import ImportAnalyzer, get_stdlib_modules
 
 

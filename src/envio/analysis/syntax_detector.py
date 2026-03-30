@@ -7,19 +7,20 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from packaging.version import Version
 
 from envio.utils.version_utils import (
     detect_system_python_version,
     major_minor,
-    max_version as max_version_util,
     version_at_least,
+)
+from envio.utils.version_utils import (
+    max_version as max_version_util,
 )
 
 if TYPE_CHECKING:
-    from envio.analysis.import_analyzer import SKIP_INDICATORS
     from envio.llm.client import LLMClient
 
 
@@ -38,7 +39,7 @@ class DeprecatedPattern:
 class SyntaxDetector:
     """Detector for syntax patterns to infer codebase age."""
 
-    def __init__(self, llm_client: "LLMClient | None" = None) -> None:
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
         """Initialize detector.
 
         Args:

@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from envio.cli_helpers import (
+    _ENV_NAME_RE,
     _get_console,
     _get_profiler,
     _load_dotenv,
@@ -16,10 +17,8 @@ from envio.cli_helpers import (
     _scan_directory,
     _validate_and_normalize_packages,
     _validate_path,
-    _ENV_NAME_RE,
     detect_package_managers,
 )
-from envio.ui.console import ConsoleUI
 
 
 @click.command()
@@ -121,7 +120,7 @@ def init(env_type: str | None, verbose: bool) -> None:
         console.print_info("Where to create the environment?")
         console._safe_print(f"  [cyan][1][/cyan] Here      ({here_path})")
         console._safe_print(f"  [cyan][2][/cyan] Default   ({default_path})")
-        console._safe_print(f"  [cyan][3][/cyan] Custom path")
+        console._safe_print("  [cyan][3][/cyan] Custom path")
         try:
             location_choice = input("Choice [1]: ").strip() or "1"
         except (KeyboardInterrupt, EOFError):

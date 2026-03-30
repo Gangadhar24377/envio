@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import traceback
-from pathlib import Path
 
 import click
 
@@ -12,7 +11,6 @@ from envio.cli_helpers import (
     _get_console,
     _load_dotenv,
 )
-from envio.ui.console import ConsoleUI
 
 
 @click.command()
@@ -51,8 +49,6 @@ def audit(
         import subprocess
         import sys
 
-        from envio.core.virtualenv_manager import VirtualEnvManager
-
         # Check if pip-audit is available globally first
         pip_audit_cmd = shutil.which("pip-audit")
 
@@ -77,71 +73,9 @@ def audit(
         if not env_path:
             return
 
-            # Print choices to stderr to not interfere with stdin
-            for i, (p, label) in enumerate(choices, 1):
-                print(f"  [{i}] {label}", file=sys.stderr)
+        from envio.core.virtualenv_manager import VirtualEnvManager
 
-            try:
-                choice = click.prompt(
-                    "Select environment number", type=int, default=1, err=True
-                )
-                idx = choice - 1
-                if 0 <= idx < len(choices):
-                    env_path = Path(choices[idx][0])
-                else:
-                    console.print_error("Invalid selection.")
-                    return
-            except click.Abort:
-                print("\nAborted.", file=sys.stderr)
-                return
-
-        if not manager.exists(env_path):
-            console.print_error(f"Virtual environment not found at: {env_path}")
-            return
-
-            print("")  # Print newline before choices
-            for i, (p, label) in enumerate(choices, 1):
-                print(f"  [{i}] {label}")
-            print("")
-
-            try:
-                choice = click.prompt("Select environment number", type=int, default=1)
-                idx = choice - 1
-                if 0 <= idx < len(choices):
-                    env_path = Path(choices[idx][0])
-                else:
-                    console.print_error("Invalid selection.")
-                    return
-            except click.Abort:
-                print("\nAborted.")
-                return
-
-        if not manager.exists(env_path):
-            console.print_error(f"Virtual environment not found at: {env_path}")
-            return
-
-            console.print_info("Select an environment to audit:")
-            console.print_info("")
-            for i, (p, label) in enumerate(choices, 1):
-                console._safe_print(f"  [{i}] {label}", style="cyan")
-            console.print_info("")
-
-            try:
-                choice = input("Enter number [1]: ").strip() or "1"
-                idx = int(choice) - 1
-                if 0 <= idx < len(choices):
-                    env_path = Path(choices[idx][0])
-                else:
-                    console.print_error("Invalid selection.")
-                    return
-            except (KeyboardInterrupt, EOFError, ValueError):
-                console.print_warning("\nAborted.")
-                return
-
-        if not manager.exists(env_path):
-            console.print_error(f"Virtual environment not found at: {env_path}")
-            return
-
+        manager = VirtualEnvManager()
         if not manager.exists(env_path):
             console.print_error(f"Virtual environment not found at: {env_path}")
             return

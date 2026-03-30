@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from envio.cli_helpers import (
     _ENV_NAME_RE,
     _is_conda_active,

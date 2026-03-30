@@ -5,14 +5,13 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import sys
-import traceback
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import click
 import requests
 
-from envio import __version__
+if TYPE_CHECKING:
+    from envio.ui.console import ConsoleUI
 
 VALID_PACKAGE_MANAGERS = ["pip", "conda", "uv"]
 
@@ -93,7 +92,6 @@ def _get_pypi_name_for_import(import_name: str) -> str | None:
     try:
         from envio.config import get_api_key, get_model
         from envio.llm.client import LLMClient
-        from envio.llm.parser import ResponseParser
 
         api_key = get_api_key()
         if not api_key:
@@ -260,7 +258,7 @@ def detect_package_managers() -> dict[str, bool]:
 def _find_environment(
     name: str | None,
     path: str | None,
-    console: "ConsoleUI | None" = None,
+    console: ConsoleUI | None = None,
 ) -> Path | None:
     """Find environment path by name or path, or show available environments.
 
@@ -321,7 +319,7 @@ def _find_environment(
         for venv_name in [".venv", "venv", "env"]:
             v = Path.cwd() / venv_name
             if manager.exists(v):
-                console.print_info(f"Found in current directory:")
+                console.print_info("Found in current directory:")
                 console._safe_print(f"  {v}", style="cyan")
                 console.print_info("")
                 break

@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import requests
-
 
 # Known mappings that differ from import name to PyPI package name
 # These are detected dynamically, but cached for common cases
@@ -26,7 +24,7 @@ def _load_cache() -> dict[str, str]:
 
     if _CACHE_FILE.exists():
         try:
-            with open(_CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(_CACHE_FILE, encoding="utf-8") as f:
                 _KNOWN_MAPPINGS_CACHE = json.load(f)
             return _KNOWN_MAPPINGS_CACHE
         except (json.JSONDecodeError, OSError):

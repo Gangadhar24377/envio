@@ -16,7 +16,6 @@ from envio.cli_helpers import (
 )
 from envio.config import get_default_envs_dir
 from envio.core.registry import EnvironmentRegistry
-from envio.ui.console import ConsoleUI
 
 
 @click.command()

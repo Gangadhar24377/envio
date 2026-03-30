@@ -1,9 +1,8 @@
 """Tests for SystemProfiler."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from envio.core.system_profiler import SystemProfiler, OSType, ShellType, GPUInfo
+from envio.core.system_profiler import GPUInfo, OSType, ShellType, SystemProfiler
 
 
 class TestSystemProfiler:

@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
 from envio.commands.resurrect import (
+    _clone_repo,
     _is_url,
     _is_valid_git_url,
-    _clone_repo,
     resurrect_command,
 )
 
@@ -96,7 +95,7 @@ class TestResurrectCommand:
             patch(
                 "envio.cli_helpers._validate_and_normalize_packages"
             ) as mock_validate,
-            patch("envio.llm.client.LLMClient") as mock_llm,
+            patch("envio.llm.client.LLMClient"),
         ):
             analyzer = MagicMock()
             analyzer.scan_directory.return_value = {"third_party": ["flask"]}

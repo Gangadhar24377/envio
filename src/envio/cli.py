@@ -74,7 +74,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, _handle_interrupt)
 
     # Check for first-run setup
-    from envio.config import is_first_run, ensure_config
+    from envio.config import ensure_config, is_first_run
 
     if is_first_run():
         ensure_config(prompt_first_run=True)

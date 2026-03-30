@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import re
 import shlex
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from envio.core.system_profiler import OSType, SystemProfiler
-from envio.utils.sanitize import sanitize_package_name
 
 if TYPE_CHECKING:
     from envio.core.system_profiler import ShellType
@@ -193,7 +191,7 @@ pip install {escaped_pkgs}
                 continue
 
         # Build package string with CUDA URL if provided
-        packages_str = " ".join(safe_packages)
+        " ".join(safe_packages)
         extra_index_arg = (
             f" --extra-index-url {escape_powershell_arg(cuda_url)}" if cuda_url else ""
         )

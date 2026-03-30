@@ -12,7 +12,6 @@ from envio.cli_helpers import (
     _load_dotenv,
     detect_package_managers,
 )
-from envio.ui.console import ConsoleUI
 
 
 @click.command()

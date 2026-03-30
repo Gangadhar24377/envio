@@ -1,10 +1,9 @@
 """Tests for SelfHealingLoop."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from envio.resolution.self_healing import SelfHealingLoop, HealingResult
 from envio.resolution.fast_resolver import ResolutionResult, ResolutionStatus
+from envio.resolution.self_healing import SelfHealingLoop
 
 
 class TestSelfHealingLoop:
