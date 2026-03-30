@@ -1,73 +1,159 @@
 # Envio
 
 <p align="center">
-[![PyPI Version](https://img.shields.io/pypi/v/envio)](https://pypi.org/project/envio/)
-[![Python Versions](https://img.shields.io/pypi/pyversions/envio)](https://pypi.org/project/envio/)
-[![License](https://img.shields.io/pypi/l/envio)](LICENSE)
-[![Downloads](https://img.shields.io/pypi/dm/envio)](https://pypi.org/project/envio/)
+  <a href="https://pypi.org/project/envio-ai/"><img src="https://img.shields.io/pypi/v/envio-ai" alt="PyPI Version"></a>
+  <a href="https://pypi.org/project/envio-ai/"><img src="https://img.shields.io/pypi/pyversions/envio-ai" alt="Python Versions"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/pypi/l/envio-ai" alt="License"></a>
+  <a href="https://pypi.org/project/envio-ai/"><img src="https://img.shields.io/pypi/dm/envio-ai" alt="Downloads"></a>
 </p>
 
 <p align="center">
-  <strong>The AI-Powered Python Environment Manager</strong><br />
+  <strong>AI-Native Environment Orchestrator</strong><br>
   <em>"It understands what you want, not just what you type."</em>
 </p>
 
-### Why Envio?
+---
+
+## Why Envio?
+
 Ever spent hours fixing dependency conflicts? Wish you could just tell your computer "I need a web app with Flask" and have everything just work? That's Envio.
 
-## Why You'll Love Envio
 | Problem | Envio's Solution |
 |---------|------------------|
 | "What package provides `import cv2`?" | Auto-detects common imports (`cv2` -> `opencv-python`) |
-| Dependency conflicts | AI resolves them automatically (3 attempts) |
+| Dependency conflicts | AI resolves them automatically (3 attempts with self-healing) |
 | Wrong package names | Self-healing finds the correct one |
 | GPU vs CPU packages | Hardware-aware installation |
 | Security vulnerabilities | Built-in `envio audit` |
+| Finding existing environments | Registry tracks all created environments |
+
+---
 
 ## Installation
 
 ```bash
-pip install envio
+pip install envio-ai
 ```
 
 That's it. You're ready to go.
 
-## Quick Demo
+---
 
+## Quick Start
+
+```bash
+# Configure your API key (optional - enables AI features)
+envio config api sk-your-openai-key
+
+# Optional: Enable web search for better package suggestions
+# Without this, the app still works with just AI (LLM)
+envio config serper-api your-serper-key
+
+# Create environment from natural language
+envio prompt "data science with pandas and sklearn"
+
+# Or from existing requirements.txt
+envio init .
+
+# Or install packages directly
+envio install requests flask
 ```
-# Tell Envio what you want
-$ envio prompt "data science environment with pandas and sklearn"
-# It figures out:
-# -> pandas, numpy, scikit-learn, scipy, joblib...
-# -> Full dependency tree with versions
-# -> Optimized for your GPU if you have one
-# -> Creates the environment ready to use
-```
+
+---
 
 ## Commands at a Glance
 
-| Command | What it does |
+| Command | Description |
 |---------|-------------|
 | `envio prompt "flask api"` | Create env from natural language |
-| `envio init .` | Create env from requirements.txt |
+| `envio init .` | Initialize from requirements.txt |
 | `envio install numpy pandas` | Install packages directly |
-| `envio list` | See all your environments |
-| `envio activate my-env` | Get activation command |
-| `envio audit` | Check for security vulnerabilities |
+| `envio list` | List all environments |
+| `envio activate my-env` | Show activation commands |
+| `envio audit` | Scan for vulnerabilities |
 | `envio lock` | Generate reproducible lockfile |
+| `envio export` | Export to dockerfile/devcontainer |
+| `envio resurrect` | Analyze old repos and revive |
+| `envio doctor` | Show hardware profile |
 
-## Configuration
+---
 
-```bash
-# One-time setup
-envio config api sk-your-openai-key
-# Optional: Set your model
-envio config model gpt-4o-mini
-# Optional: Serper for web search enhancement
-envio config serper-api your-key
+## File Structure
+
+```
+envio/
+├── src/envio/
+│   ├── cli.py                    # Main CLI entry point
+│   ├── cli_helpers.py            # Shared helper functions
+│   ├── config.py                 # Configuration management
+│   ├── __init__.py               # Package init with version
+│   ├── __main__.py               # Package entry point
+│   │
+│   ├── commands/                 # CLI commands (modular)
+│   │   ├── __init__.py
+│   │   ├── activate.py           # Show activation commands
+│   │   ├── audit.py              # Security vulnerability scan
+│   │   ├── config.py             # Configuration management
+│   │   ├── doctor.py             # System hardware profile
+│   │   ├── export.py             # Export to various formats
+│   │   ├── init.py               # Initialize from project files
+│   │   ├── install.py            # Direct package installation
+│   │   ├── list_envs.py           # List registered environments
+│   │   ├── lock.py                # Generate lockfiles
+│   │   ├── prompt.py              # Natural language env creation
+│   │   ├── remove.py              # Remove packages
+│   │   └── resurrect.py           # Analyze and revive old repos
+│   │
+│   ├── agents/                   # AI agents
+│   │   ├── nlp_agent.py           # Natural language processing
+│   │   ├── dependency_resolution_agent.py
+│   │   └── command_construction_agent.py
+│   │
+│   ├── analysis/                 # Code analysis
+│   │   ├── import_analyzer.py    # Scan for imports
+│   │   ├── syntax_detector.py    # Detect deprecated patterns
+│   │   ├── version_inference.py  # Infer package versions
+│   │   └── package_mapping.py    # Import to PyPI mapping
+│   │
+│   ├── core/                     # Core functionality
+│   │   ├── registry.py           # Environment registry
+│   │   ├── virtualenv_manager.py # Venv management
+│   │   ├── system_profiler.py    # Hardware detection
+│   │   ├── executor.py           # Script execution
+│   │   └── script_generator.py   # Installation scripts
+│   │
+│   ├── llm/                      # LLM integration
+│   │   ├── client.py             # LLM API client
+│   │   ├── parser.py             # Response parsing
+│   │   └── prompts.py            # LLM prompts
+│   │
+│   ├── resolution/                # Dependency resolution
+│   │   ├── fast_resolver.py      # Quick resolution
+│   │   └── self_healing.py       # Auto-fix failures
+│   │
+│   ├── tools/                    # External tools
+│   │   ├── serper_search.py      # Web search
+│   │   └── package_lookup.py     # PyPI lookups
+│   │
+│   ├── ui/                       # User interface
+│   │   └── console.py            # Rich console output
+│   │
+│   └── utils/                    # Utilities
+│       ├── http_utils.py
+│       ├── paths.py
+│       ├── sanitize.py
+│       └── version_utils.py
+│
+├── pyproject.toml                # Package configuration
+├── COMMANDS.md                   # Detailed command reference
+├── CONTRIBUTING.md               # Contribution guidelines
+├── SECURITY.md                   # Security policy
+└── README.md                     # This file
 ```
 
-## Features That Make Life Easier
+---
+
+## Features
 
 ### Natural Language Environment Creation
 
@@ -75,37 +161,81 @@ envio config serper-api your-key
 envio prompt "machine learning with pytorch and transformers"
 ```
 
-Just describe what you need. Envio understands domains (AI Agents, Web Dev, Data Science, etc.) and picks the right packages.
+Just describe what you need. Envio understands domains and picks the right packages.
 
-### Self-Healing
+### Self-Healing + Web Search (Optional)
 
-When things go wrong, Envio doesn't just fail - it tries to fix itself:
-- Wrong package name? -> Finds the correct one
-- Version conflict? -> Suggests compatible versions
-- Package not found? -> Searches for alternatives
+When things go wrong, Envio tries to fix itself:
+- Wrong package name → Finds the correct one
+- Version conflict → Suggests compatible versions
+- Package not found → Searches for alternatives via web search (if Serper configured)
+- Installation failure → Retries with fixes (up to 3 attempts)
+
+The app works perfectly with just an LLM API key. Adding a free Serper API key enables enhanced web search for better package suggestions.
 
 ### Hardware-Aware
 
-Envio detects your GPU (NVIDIA, Apple Silicon, etc.) and installs the right packages:
-- `torch` + CUDA for NVIDIA
-- `torch` + Metal for Apple Silicon
-- `torch-cpu` for CPU-only
+Envio detects your GPU and installs the right packages:
+- NVIDIA CUDA for NVIDIA GPUs
+- Metal for Apple Silicon
+- CPU-only when needed
+
+### Environment Registry
+
+All environments created by Envio are tracked:
+```bash
+envio list                    # See all environments
+envio audit                   # Interactive environment picker
+envio export -n my-env        # Export by name
+```
 
 ### Security Built-In
 
 ```bash
-envio audit -n my-env
+envio audit                   # Shows picker if no env specified
+envio audit -n my-env        # Audit specific environment
+envio audit -n my-env --fix  # Auto-fix vulnerabilities
 ```
-
-Scans for known vulnerabilities in your dependencies.
 
 ### Multiple Export Formats
 
 ```bash
+envio export -n my-env --format requirements
 envio export -n my-env --format dockerfile
 envio export -n my-env --format devcontainer
-envio export -n my-env --format requirements
 ```
+
+### Resurrect Old Repos
+
+```bash
+envio resurrect https://github.com/user/old-repo
+envio resurrect ./path/to/old-project
+```
+
+---
+
+## Configuration
+
+```bash
+# Required: Set API key (auto-detects provider: openai, anthropic, etc.)
+envio config api sk-your-openai-key
+
+# Set model (optional, defaults to gpt-4o-mini)
+envio config model gpt-4o-mini
+
+# Optional: Enable web search for enhanced package suggestions
+# Get a free key at https://serper.dev
+envio config serper-api your-key
+
+# View configuration
+envio config show
+
+# Set defaults
+envio config set default_envs_dir ~/my-envs
+envio config set preferred_package_manager uv
+```
+
+---
 
 ## Supported Tools
 
@@ -113,14 +243,19 @@ envio export -n my-env --format requirements
 - **LLM Providers**: OpenAI, Anthropic, Together AI, Ollama (local)
 - **Platforms**: Windows, Linux, macOS
 
+---
+
 ## Environment Variables
 
 ```bash
 # Quiet mode (great for CI/CD)
 export ENVIO_QUIET=1
+
 # No colors
 export NO_COLOR=1
 ```
+
+---
 
 ## Documentation
 
@@ -128,10 +263,14 @@ export NO_COLOR=1
 - [Contributing](CONTRIBUTING.md) - Want to contribute?
 - [Security](SECURITY.md) - Vulnerability reporting
 
+---
+
 ## License
 
 MIT - use it however you want.
+
 ---
+
 <p align="center">
-Made with alot of caffiene by <a href="https://github.com/Gangadhar24377">Gangadhar Kambhamettu</a>
+Made with ☕ by <a href="https://github.com/Gangadhar24377">Gangadhar Kambhamettu</a>
 </p>

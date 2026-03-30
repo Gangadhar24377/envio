@@ -86,6 +86,7 @@ envio_setup_*.sh
 *.key
 credentials.json
 secrets.json
+.pypirc
 
 # mypy
 .mypy_cache/

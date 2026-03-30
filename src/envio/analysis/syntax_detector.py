@@ -268,7 +268,6 @@ class SyntaxDetector:
             BarColumn(),
             MofNCompleteColumn(),
             transient=True,
-            refresh_per_second=0,
         ) as progress:
             task = progress.add_task("Analyzing Python files...", total=len(py_files))
 

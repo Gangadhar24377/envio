@@ -2,13 +2,15 @@
 
 Comprehensive guide to all Envio CLI commands with examples.
 
+---
+
 ## Installation & Setup
 
 ### Basic Setup
 
 ```bash
 # Install envio from PyPI
-pip install envio
+pip install envio-ai
 
 # Or install from source
 git clone https://github.com/Gangadhar24377/envio.git
@@ -56,8 +58,11 @@ Create an environment from natural language description.
 # Basic usage - describe what you want
 envio prompt "web app with flask and react"
 
-# With custom name and path
-envio prompt "data science environment" -n my-data-env -p ~/envs
+# With custom name
+envio prompt "data science environment" -n my-data-env
+
+# With custom path
+envio prompt "data science environment" -p ~/envs
 
 # With GPU optimization
 envio prompt "machine learning with pytorch" --optimize-for training
@@ -69,15 +74,23 @@ envio prompt "data analysis with pandas" --cpu-only
 envio prompt "flask api" --dry-run
 
 # Specify package manager
-envio prompt "fastapi app" --manager uv
+envio prompt "fastapi app" -e uv
 
 # Skip confirmation prompt
 envio prompt "simple script" -y
 ```
 
+**How it works:**
+1. Analyzes your request using NLP
+2. Detects your hardware (GPU, VRAM, CUDA)
+3. Resolves dependencies with AI
+4. Creates environment with self-healing if needed
+
+---
+
 ### `envio init`
 
-Initialize environment from existing project files (requirements.txt, etc.).
+Initialize environment from existing project files (requirements.txt, pyproject.toml, etc.).
 
 ```bash
 # Auto-detect requirements files in current directory
@@ -86,39 +99,44 @@ envio init .
 # From specific directory
 envio init /path/to/project
 
-# Choose location (1=here, 2=default, 3=custom)
-# Creates environment in selected location
-envio init .
-
 # With specific name
 envio init . -n my-environment
 
 # Specify package manager
-envio init . --manager conda
+envio init . -e conda
 
 # Skip confirmation
 envio init . -y
 ```
+
+**Detects:**
+- `requirements.txt`
+- `pyproject.toml`
+- `setup.py`
+- `environment.yml`
+- Python imports (scans `.py` files)
+
+---
 
 ### `envio install`
 
 Install packages directly to an environment.
 
 ```bash
-# Install to default location (~/Documents/envs)
+# Install (prompts for name and path)
 envio install requests
 
-# Install to existing environment by name
-envio install numpy pandas -n my-env
+# With name and path
+envio install numpy pandas -n my-env -p ~/envs
 
-# With explicit path
+# With explicit path only
 envio install flask -p /path/to/env
 
 # Install with specific versions
 envio install "numpy>=1.24" "pandas>=2.0"
 
 # Using different package manager
-envio install flask --manager pip
+envio install flask -e pip
 
 # Dry run
 envio install flask --dry-run
@@ -126,6 +144,8 @@ envio install flask --dry-run
 # Skip confirmation
 envio install flask -y
 ```
+
+**Note:** If no name/path provided, prompts interactively for both.
 
 ---
 
@@ -138,9 +158,6 @@ List all environments created by Envio.
 ```bash
 # List all environments
 envio list
-
-# Verbose output with details
-envio list -v
 ```
 
 Shows:
@@ -151,19 +168,26 @@ Shows:
 - Creation date
 - Recreation commands
 
+---
+
 ### `envio activate`
 
 Show activation commands for an environment.
 
 ```bash
 # By name (checks registry, then default location)
-envio activate my-env
+envio activate -n my-env
 
 # With explicit path
 envio activate -p /path/to/env
-
-# Shows commands for PowerShell, CMD, and Git Bash
 ```
+
+Shows commands for:
+- PowerShell
+- CMD
+- Git Bash
+
+---
 
 ### `envio remove`
 
@@ -204,13 +228,17 @@ Shows:
 - VRAM
 - CUDA version
 - Recommended batch sizes
+- Available package managers
+- LLM configuration status
+
+---
 
 ### `envio audit`
 
 Scan environment for known security vulnerabilities.
 
 ```bash
-# Audit default environment
+# Shows interactive picker (lists all environments)
 envio audit
 
 # Audit specific environment by name
@@ -219,9 +247,17 @@ envio audit -n my-env
 # Audit with explicit path
 envio audit -p /path/to/env
 
-# Skip security fixes suggestions
-envio audit -n my-env --skip-fix
+# Auto-fix vulnerabilities
+envio audit -n my-env --fix
+
+# Filter by severity
+envio audit -n my-env --severity high
 ```
+
+**When no environment specified:**
+- Shows current directory `.venv` if exists
+- Lists all registered environments
+- Explains how to specify: `-n <name>` or `-p <path>`
 
 ---
 
@@ -232,14 +268,17 @@ envio audit -n my-env --skip-fix
 Export environment configuration to various formats.
 
 ```bash
-# By name (checks registry first, then default location)
+# Shows interactive picker (lists all environments)
+envio export
+
+# By name
 envio export -n my-env --format requirements
 
-# With explicit path (for non-envio environments)
+# With explicit path
 envio export -p /path/to/env --format requirements
 
-# Export to requirements.txt
-envio export -n my-env --format requirements
+# Export to requirements.txt (default)
+envio export -n my-env
 
 # Export to Dockerfile
 envio export -n my-env --format dockerfile
@@ -247,38 +286,31 @@ envio export -n my-env --format dockerfile
 # Export to devcontainer.json (VS Code)
 envio export -n my-env --format devcontainer
 
-# Export to docker-compose.yml
-envio export -n my-env --format docker-compose
-
-# Export to conda environment.yml
-envio export -n my-env --format conda
-
 # Custom output file
 envio export -n my-env -o my-requirements.txt
 ```
+
+---
 
 ### `envio lock`
 
 Generate a lockfile for reproducible environments.
 
 ```bash
-# By name (checks registry first, then default location)
+# By name
 envio lock -n my-env
 
-# With explicit path (for non-envio environments)
+# With explicit path
 envio lock -p /path/to/env
 
 # Custom filename
 envio lock -n my-env -o requirements.lock
 
-# Using specific package manager
-envio lock -n my-env --manager uv
-
-# JSON format (default)
-envio lock -n my-env --format json
-
-# Text format
+# Text format (default)
 envio lock -n my-env --format text
+
+# JSON format
+envio lock -n my-env --format json
 ```
 
 ---
@@ -293,6 +325,9 @@ Analyze dead/unmaintained repositories and generate requirements.
 # From local directory
 envio resurrect /path/to/old-repo
 
+# From current directory
+envio resurrect .
+
 # From GitHub URL
 envio resurrect https://github.com/user/old-repo
 
@@ -300,11 +335,20 @@ envio resurrect https://github.com/user/old-repo
 envio resurrect https://github.com/user/old-repo -n revived-env
 
 # Using conda
-envio resurrect /path/to/repo --env-type conda
+envio resurrect /path/to/repo -e conda
 
 # With explicit path
-envio resurrect . -p /path/to/save/requirements.txt
+envio resurrect . -p /path/to/save
 ```
+
+**What it does:**
+1. Scans Python files for imports
+2. Maps imports to PyPI packages
+3. Detects deprecated patterns
+4. Infers Python version timeline
+5. Finds compatible package versions
+6. Generates `requirements.txt`
+7. Optionally creates the environment
 
 ---
 
@@ -335,7 +379,7 @@ envio config set default_envs_dir ~/my-envs
 # Set preferred package manager
 envio config set preferred_package_manager uv
 
-# Clear API key (switches to Ollama mode)
+# Clear API key
 envio config unset api
 
 # Clear model
@@ -355,10 +399,40 @@ These options work across multiple commands:
 |--------|-------------|
 | `-n, --name` | Environment name |
 | `-p, --path` | Explicit path to environment |
+| `-e, --env-type` | Package manager (pip, uv, conda) |
 | `-v, --verbose` | Enable verbose output |
 | `-y, --yes` | Skip confirmation prompts |
 | `--dry-run` | Show what would happen without executing |
-| `--manager` | Package manager (pip, uv, conda) |
+
+---
+
+## Environment Specification
+
+Commands that need an environment accept it in multiple ways:
+
+### Priority Order
+
+1. **Explicit path**: `-p /path/to/env`
+2. **Name**: `-n my-env` (checks registry, then default location)
+3. **Interactive picker**: No flag provided (shows list)
+
+### How Environment Detection Works
+
+```bash
+# 1. Explicit path (highest priority)
+envio audit -p /path/to/env
+
+# 2. Name (checks registry, then ~/Documents/envs/)
+envio audit -n my-env
+
+# 3. Interactive (shows picker if no -n or -p)
+envio audit
+# Output:
+#   [1] Current dir: .venv
+#   [2] my-env: /path/to/env
+#   [3] another-env: /path/to/another
+#   Select environment number:
+```
 
 ---
 
@@ -375,11 +449,6 @@ export CI=true
 
 # Disable colors (follows NO_COLOR standard)
 export NO_COLOR=1
-
-# Note: API keys are now stored in config file via:
-#   envio config api <key>
-#   envio config serper-api <key>
-# Environment variables are no longer used for API keys.
 ```
 
 ---

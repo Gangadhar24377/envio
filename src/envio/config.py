@@ -387,8 +387,8 @@ def get_default_envs_dir(prompt: bool = True) -> tuple[str | None, str | None]:
     config["preferred_package_manager"] = package_manager
     save_config(config)
 
-    print(f"\n✓ Default directory set to: {default_dir}")
-    print(f"✓ Preferred package manager: {package_manager}")
+    print(f"\n[+] Default directory set to: {default_dir}")
+    print(f"[+] Preferred package manager: {package_manager}")
     print("\nYou can change these anytime with: envio config")
     print("=" * 50 + "\n")
 
@@ -449,8 +449,8 @@ def setup_llm_first_run() -> None:
         config["model"] = model
         save_config(config)
 
-        print(f"\n✓ Provider: Ollama")
-        print(f"✓ Model: {model}")
+        print(f"\n[+] Provider: Ollama")
+        print(f"[+] Model: {model}")
 
     elif choice == "1":
         # OpenAI
@@ -479,8 +479,14 @@ def setup_llm_first_run() -> None:
             config["model"] = model
             save_config(config)
 
-            print(f"\n✓ Provider: OpenAI")
-            print(f"✓ Model: {model}")
+            # Mask API key for display
+            if len(api_key) > 12:
+                masked = api_key[:8] + "..." + api_key[-4:]
+            else:
+                masked = api_key[:4] + "..."
+            print(f"\n[+] Provider: OpenAI")
+            print(f"[+] API key: {masked}")
+            print(f"[+] Model: {model}")
 
     elif choice == "2":
         # Anthropic
@@ -506,8 +512,14 @@ def setup_llm_first_run() -> None:
             config["model"] = model
             save_config(config)
 
-            print(f"\n✓ Provider: Anthropic")
-            print(f"✓ Model: {model}")
+            # Mask API key for display
+            if len(api_key) > 12:
+                masked = api_key[:8] + "..." + api_key[-4:]
+            else:
+                masked = api_key[:4] + "..."
+            print(f"\n[+] Provider: Anthropic")
+            print(f"[+] API key: {masked}")
+            print(f"[+] Model: {model}")
 
     elif choice == "3":
         # Other provider
@@ -539,12 +551,18 @@ def setup_llm_first_run() -> None:
             config["model"] = model
             save_config(config)
 
-            print(f"\n✓ Provider: {provider}")
-            print(f"✓ Model: {model}")
+            # Mask API key for display
+            if len(api_key) > 12:
+                masked = api_key[:8] + "..." + api_key[-4:]
+            else:
+                masked = api_key[:4] + "..."
+            print(f"\n[+] Provider: {provider}")
+            print(f"[+] API key: {masked}")
+            print(f"[+] Model: {model}")
 
     else:
         print(
-            "\n✓ Skipped LLM setup. You can configure later with: envio config api <key>"
+            "\n[+] Skipped LLM setup. You can configure later with: envio config api <key>"
         )
 
 
@@ -613,8 +631,8 @@ def ensure_config(prompt_first_run: bool = True) -> dict[str, Any]:
         config["preferred_package_manager"] = package_manager
         save_config(config)
 
-        print(f"\n✓ Default envs directory: {default_dir}")
-        print(f"✓ Preferred package manager: {package_manager}")
+        print(f"\n[+] Default envs directory: {default_dir}")
+        print(f"[+] Preferred package manager: {package_manager}")
         print("\nConfiguration saved! You can change these anytime with: envio config")
         print("=" * 50 + "\n")
 

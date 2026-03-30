@@ -1,6 +1,6 @@
 [project]
-name = "envio"
-version = "0.1.0"
+name = "envio-ai"
+version = "0.3.1"
 description = "AI-Native Environment Orchestrator"
 readme = "README.md"
 license = {text = "MIT"}
@@ -74,3 +74,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["src/tests"]
 asyncio_mode = "auto"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/envio"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["nul", ".venv", ".git", "dist"]
