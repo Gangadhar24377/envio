@@ -5,6 +5,7 @@
   <a href="https://pypi.org/project/envio-ai/"><img src="https://img.shields.io/pypi/pyversions/envio-ai" alt="Python Versions"></a>
   <a href="LICENSE"><img src="https://img.shields.io/pypi/l/envio-ai" alt="License"></a>
   <a href="https://pypi.org/project/envio-ai/"><img src="https://img.shields.io/pypi/dm/envio-ai" alt="Downloads"></a>
+  <a href="https://github.com/Gangadhar24377/envio/actions/workflows/ci.yml"><img src="https://github.com/Gangadhar24377/envio/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI"></a>
 </p>
 
 <p align="center">
