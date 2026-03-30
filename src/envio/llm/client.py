@@ -75,7 +75,9 @@ class LLMConfig:
 
         # Handle Ollama (no API key needed)
         if provider == "ollama":
-            ollama_available, available_models = _check_ollama(ollama_host)
+            ollama_available, available_models = _check_ollama(
+                str(ollama_host) if ollama_host else DEFAULT_OLLAMA_HOST
+            )
             if not ollama_available:
                 raise ValueError(
                     "Ollama is not running. Please start Ollama or use a different provider:\n"
@@ -123,7 +125,9 @@ class LLMConfig:
 
         if not api_key:
             # Check if Ollama is available as fallback
-            ollama_available, available_models = _check_ollama(ollama_host)
+            ollama_available, available_models = _check_ollama(
+                str(ollama_host) if ollama_host else DEFAULT_OLLAMA_HOST
+            )
             if ollama_available and available_models:
                 return cls(
                     provider="ollama",

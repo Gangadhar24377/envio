@@ -38,6 +38,7 @@ class ConsoleUI:
     def __init__(self, verbose: bool = True, log_file: str | None = None) -> None:
         self._verbose = verbose
         self._start_time = time.time()
+        self._console: Console | None = None
 
         # Check for quiet mode (ENVIO_QUIET=1) or CI environment
         self._quiet = os.getenv("ENVIO_QUIET", "").lower() in ("1", "true", "yes")
@@ -523,7 +524,7 @@ class ConsoleUI:
     def spinner(self, message: str) -> Generator:
         """Context manager for showing a spinner with message."""
         ts = _timestamp()
-        if self._use_rich:
+        if self._use_rich and self._console is not None:
             with self._console.status(
                 f"[dim]{ts}[/dim] [bold cyan]{message}[/bold cyan]"
             ) as status:
@@ -536,7 +537,7 @@ class ConsoleUI:
     def status(self, message: str) -> Generator:
         """Context manager for showing status (compatibility)."""
         ts = _timestamp()
-        if self._use_rich:
+        if self._use_rich and self._console is not None:
             with self._console.status(
                 f"[dim]{ts}[/dim] [bold cyan]{message}[/bold cyan]"
             ) as status:

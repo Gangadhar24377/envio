@@ -90,15 +90,19 @@ def _get_pypi_name_for_import(import_name: str) -> str | None:
         return _ai_package_cache[import_name]
 
     try:
-        from envio.config import get_api_key, get_model
-        from envio.llm.client import LLMClient
+        from envio.config import get_api_key, get_model, get_provider
+        from envio.llm.client import LLMClient, LLMConfig
 
         api_key = get_api_key()
         if not api_key:
             return None
 
         model = get_model()
-        client = LLMClient(api_key=api_key, model=model)
+        provider = get_provider()
+        config = LLMConfig(
+            provider=provider or "openai", model=model or "gpt-4o-mini", api_key=api_key
+        )
+        client = LLMClient(config=config)
 
         prompt = f"""For the Python import "{import_name}", what is the exact pip package name I should install?
 
@@ -113,9 +117,7 @@ Respond with ONLY the package name, nothing else. If you don't know, respond wit
         response = client.chat(
             system_prompt="You are a Python package expert.", user_prompt=prompt
         )
-        content = (
-            response.choices[0].message.content.strip() if response.choices else ""
-        )
+        content = response.content.strip()
 
         if content and content != "UNKNOWN":
             pypi_name = content.lower().strip()
