@@ -134,7 +134,7 @@ class DependencyResolver:
         if not gpu.available:
             return packages
 
-        cuda_url = self._get_cuda_index_url(gpu.cuda_version)
+        self._get_cuda_index_url(gpu.cuda_version)
 
         optimized = []
         for pkg in packages:

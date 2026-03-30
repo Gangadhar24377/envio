@@ -38,7 +38,7 @@ class TestScriptExecutor:
         content = "Write-Host 'Hello'"
 
         with patch("pathlib.Path.mkdir"):
-            with patch("pathlib.Path.write_text") as mock_write:
+            with patch("pathlib.Path.write_text"):
                 with patch("pathlib.Path.chmod"):
                     result = executor.write_script(content, Path("test"))
                     assert result.suffix == ".ps1"
@@ -55,7 +55,7 @@ class TestScriptExecutor:
         content = "echo 'Hello'"
 
         with patch("pathlib.Path.mkdir"):
-            with patch("pathlib.Path.write_text") as mock_write:
+            with patch("pathlib.Path.write_text"):
                 with patch("pathlib.Path.chmod") as mock_chmod:
                     result = executor.write_script(content, Path("test"))
                     assert result.suffix == ".sh"

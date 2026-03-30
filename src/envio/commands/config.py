@@ -45,7 +45,6 @@ def config_api(api_key: str, provider: str | None = None) -> None:
         AVAILABLE_PROVIDERS,
         detect_provider_from_key,
         set_api_key,
-        set_provider,
     )
 
     # Auto-detect provider
@@ -132,7 +131,6 @@ def config_serper_api(api_key: str) -> None:
     # Try to import Rich
     try:
         from rich.console import Console
-        from rich.panel import Panel
 
         console = Console()
         console.print(f"[green]Serper API key set:[/green] {masked}")

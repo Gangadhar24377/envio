@@ -20,7 +20,6 @@ from envio.cli_helpers import (
     _validate_path,
     get_hardware_context,
 )
-from envio.ui.console import ConsoleUI
 
 
 @click.command()

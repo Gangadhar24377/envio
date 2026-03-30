@@ -9,16 +9,13 @@ from pathlib import Path
 import click
 
 from envio.cli_helpers import (
+    VALID_PACKAGE_MANAGERS,
     _get_console,
     _get_profiler,
     _load_dotenv,
     _resolve_and_install,
     _validate_and_normalize_packages,
-    _validate_path,
-    _ENV_NAME_RE,
-    VALID_PACKAGE_MANAGERS,
 )
-from envio.ui.console import ConsoleUI
 
 
 @click.command()

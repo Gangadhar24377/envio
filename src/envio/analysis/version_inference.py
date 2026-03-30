@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import requests
 
 if TYPE_CHECKING:
-    from tqdm import tqdm
+    pass
 
 
 def get_stdlib_modules() -> set[str]:

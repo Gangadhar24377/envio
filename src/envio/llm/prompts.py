@@ -237,7 +237,7 @@ Your task:
 2. Identify the ROOT CAUSE
 3. Suggest specific fixes
 
-IMPORTANT: 
+IMPORTANT:
 - If it's a Windows path error with quotes, fix the path escaping
 - If it's a package conflict, suggest compatible versions
 - If it's a missing dependency, add it to the list

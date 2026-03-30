@@ -1,6 +1,5 @@
 """Tests for ScriptGenerator."""
 
-import pytest
 from pathlib import Path
 
 from envio.core.script_generator import (

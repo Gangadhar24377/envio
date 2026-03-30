@@ -79,10 +79,10 @@ class SystemProfile:
 class SystemProfiler:
     """Profiler for detecting system information."""
 
-    _instance: "SystemProfiler | None" = None
+    _instance: SystemProfiler | None = None
     _profile: SystemProfile | None = None
 
-    def __new__(cls) -> "SystemProfiler":
+    def __new__(cls) -> SystemProfiler:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance

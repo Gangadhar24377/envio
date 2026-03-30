@@ -1,7 +1,6 @@
 """Tests for VersionInference."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from envio.analysis.version_inference import VersionInference, get_stdlib_modules
 

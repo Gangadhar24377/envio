@@ -9,7 +9,6 @@ if TYPE_CHECKING:
 
 from envio.utils.version_utils import _is_valid_version_string
 
-
 _SYSTEM_PROMPT = """You are a Python syntax expert.
 Given a Python syntax pattern name and description, return the minimum Python version that first introduced or supports this syntax.
 Respond with ONLY valid JSON: {"min_version": "X.Y", "confidence": "high|medium|low"}
@@ -25,7 +24,7 @@ What is the minimum Python version that supports this syntax?"""
 def query_ai_for_pattern(
     pattern_name: str,
     description: str,
-    llm_client: "LLMClient",
+    llm_client: LLMClient,
 ) -> dict[str, str] | None:
     """Query AI for a pattern's minimum Python version.
 
@@ -72,7 +71,7 @@ def query_ai_for_pattern(
 
 def query_patterns_batch(
     patterns: list[dict[str, str]],
-    llm_client: "LLMClient",
+    llm_client: LLMClient,
 ) -> dict[str, dict[str, str]]:
     """Query AI for multiple patterns.
 

@@ -1,7 +1,6 @@
 """Tests for FastResolver."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from envio.resolution.fast_resolver import FastResolver, ResolutionStatus
 

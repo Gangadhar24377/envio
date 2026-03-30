@@ -1,9 +1,6 @@
 """Tests for SyntaxDetector."""
 
-import pytest
-from pathlib import Path
-
-from envio.analysis.syntax_detector import SyntaxDetector, DeprecatedPattern
+from envio.analysis.syntax_detector import DeprecatedPattern, SyntaxDetector
 
 
 class TestSyntaxDetector:
