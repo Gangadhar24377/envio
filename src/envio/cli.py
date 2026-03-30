@@ -77,7 +77,10 @@ def main() -> None:
     from envio.config import ensure_config, is_first_run
 
     if is_first_run():
-        ensure_config(prompt_first_run=True)
+        # Only prompt interactively when stdin is a real terminal.
+        # In CI / piped / non-interactive contexts, skip the wizard and use
+        # defaults — otherwise input() raises EOFError and the process dies.
+        ensure_config(prompt_first_run=sys.stdin.isatty())
 
     try:
         cli()
