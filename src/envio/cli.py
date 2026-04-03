@@ -9,6 +9,7 @@ import click
 
 from envio import __version__
 from envio.commands.activate import activate
+from envio.commands.add import add
 from envio.commands.audit import audit
 from envio.commands.config import config
 from envio.commands.doctor import doctor
@@ -17,9 +18,11 @@ from envio.commands.init import init
 from envio.commands.install import install
 from envio.commands.list_envs import list_envs
 from envio.commands.lock import lock
+from envio.commands.migrate import migrate
 from envio.commands.prompt import prompt
 from envio.commands.remove import remove
 from envio.commands.resurrect import resurrect_command
+from envio.commands.sync import sync
 
 
 def _handle_interrupt(signum, frame) -> None:
@@ -68,6 +71,9 @@ cli.add_command(resurrect_command, "resurrect")
 cli.add_command(list_envs, "list")
 cli.add_command(activate)
 cli.add_command(remove)
+cli.add_command(add)
+cli.add_command(sync)
+cli.add_command(migrate)
 
 
 def main() -> None:
