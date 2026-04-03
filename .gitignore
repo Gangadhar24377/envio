@@ -94,3 +94,6 @@ secrets.json
 
 # mypy
 .mypy_cache/
+
+# docs
+docs/internal/

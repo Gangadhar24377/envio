@@ -420,6 +420,20 @@ def _get_response_parser():
     return ResponseParser()
 
 
+def _get_project_manager():
+    """Lazy load ProjectManager."""
+    from envio.project.manager import ProjectManager
+
+    return ProjectManager()
+
+
+def _get_migrator():
+    """Lazy load Migrator."""
+    from envio.project.migrator import Migrator
+
+    return Migrator()
+
+
 def _resolve_and_install(
     packages: list[str],
     env_path: str,
