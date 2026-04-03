@@ -24,12 +24,10 @@ from __future__ import annotations
 
 import configparser
 import re
-import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -235,7 +233,7 @@ class PoetryFormat(SourceFormat):
                 groups.setdefault("dev", []).append(pep508)
 
         # Scripts
-        scripts = {k: v for k, v in poetry.get("scripts", {}).items()}
+        scripts = dict(poetry.get("scripts", {}))
 
         return MigrationData(
             project_name=name,

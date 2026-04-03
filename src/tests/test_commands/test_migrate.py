@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -57,7 +56,7 @@ class TestMigrateCommand:
         with (
             patch("envio.commands.migrate._load_dotenv"),
             patch("envio.commands.migrate._get_console") as mock_console,
-            patch("envio.project.migrator.Migrator") as MockMigrator,
+            patch("envio.project.migrator.Migrator") as mock_migrator,
         ):
             console = MagicMock()
             mock_console.return_value = console
@@ -76,7 +75,7 @@ class TestMigrateCommand:
                 mock_data,
                 tmp_path / "pyproject.toml",
             )
-            MockMigrator.return_value = migrator_instance
+            mock_migrator.return_value = migrator_instance
 
             result = runner.invoke(migrate, [str(tmp_path)])
 
@@ -90,7 +89,7 @@ class TestMigrateCommand:
         with (
             patch("envio.commands.migrate._load_dotenv"),
             patch("envio.commands.migrate._get_console") as mock_console,
-            patch("envio.project.migrator.Migrator") as MockMigrator,
+            patch("envio.project.migrator.Migrator") as mock_migrator,
         ):
             console = MagicMock()
             mock_console.return_value = console
@@ -107,7 +106,7 @@ class TestMigrateCommand:
             )
             # dry_run returns None as out_path
             migrator_instance.migrate.return_value = (mock_data, None)
-            MockMigrator.return_value = migrator_instance
+            mock_migrator.return_value = migrator_instance
 
             result = runner.invoke(migrate, [str(tmp_path), "--dry-run"])
 
@@ -123,14 +122,14 @@ class TestMigrateCommand:
         with (
             patch("envio.commands.migrate._load_dotenv"),
             patch("envio.commands.migrate._get_console") as mock_console,
-            patch("envio.project.migrator.Migrator") as MockMigrator,
+            patch("envio.project.migrator.Migrator") as mock_migrator,
         ):
             console = MagicMock()
             mock_console.return_value = console
 
             migrator_instance = MagicMock()
             migrator_instance.migrate.side_effect = ValueError("Unknown source format")
-            MockMigrator.return_value = migrator_instance
+            mock_migrator.return_value = migrator_instance
 
             result = runner.invoke(migrate, [str(tmp_path), "--from", "NotAFormat"])
 
@@ -143,14 +142,14 @@ class TestMigrateCommand:
         with (
             patch("envio.commands.migrate._load_dotenv"),
             patch("envio.commands.migrate._get_console") as mock_console,
-            patch("envio.project.migrator.Migrator") as MockMigrator,
+            patch("envio.project.migrator.Migrator") as mock_migrator,
         ):
             console = MagicMock()
             mock_console.return_value = console
 
             migrator_instance = MagicMock()
             migrator_instance.detect_format.return_value = None
-            MockMigrator.return_value = migrator_instance
+            mock_migrator.return_value = migrator_instance
 
             with runner.isolated_filesystem(temp_dir=tmp_path):
                 result = runner.invoke(migrate, [])

@@ -557,6 +557,7 @@ dependencies = [
     { name = "rich" },
     { name = "tenacity" },
     { name = "tomli" },
+    { name = "tomli-w" },
     { name = "uv" },
 ]
 
@@ -591,6 +592,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6.0" },
     { name = "tenacity", specifier = ">=8.5.0" },
     { name = "tomli", specifier = ">=2.0.0" },
+    { name = "tomli-w", specifier = ">=1.0.0" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.32.0" },
     { name = "uv" },

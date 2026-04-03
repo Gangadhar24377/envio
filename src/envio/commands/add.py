@@ -132,9 +132,7 @@ def add(
         # 3. Determine project mode                                            #
         # ------------------------------------------------------------------ #
         if legacy:
-            from envio.project.detector import ProjectMode as PM
-
-            mode = PM.REQUIREMENTS
+            mode = ProjectMode.REQUIREMENTS
         else:
             mode = detector.detect(cwd)
 
@@ -190,8 +188,8 @@ def add(
 
 
 def _handle_new_project(
-    console: "ConsoleUI",
-    manager: "ProjectManager",
+    console: ConsoleUI,
+    manager: ProjectManager,
     cwd: Path,
     packages: list[str],
     group: str | None,
@@ -232,7 +230,7 @@ def _handle_new_project(
 
 
 def _show_dry_run(
-    console: "ConsoleUI",
+    console: ConsoleUI,
     packages: list[str],
     mode: object,
     group: str | None,
