@@ -25,14 +25,19 @@ class TestRemoveCommand:
         assert result.exit_code != 0
 
     def test_remove_no_env_no_path(self):
-        """Test error when neither --env nor --path is given."""
+        """Test error when neither --env nor --path is given and no .venv in cwd."""
         runner = CliRunner()
         with (
             patch("envio.commands.remove._load_dotenv"),
             patch("envio.commands.remove._get_console") as mock_console,
+            patch("envio.core.virtualenv_manager.VirtualEnvManager") as mock_vem_cls,
         ):
             console = MagicMock()
             mock_console.return_value = console
+            manager = MagicMock()
+            # .venv auto-detect returns False → falls through to error
+            manager.exists.return_value = False
+            mock_vem_cls.return_value = manager
             result = runner.invoke(remove, ["numpy"])
         assert result.exit_code == 0
         console.print_error.assert_called_with("Please specify --env or --path")
