@@ -74,6 +74,7 @@ envio install requests flask
 | `envio activate my-env` | Show activation commands |
 | `envio audit` | Scan for vulnerabilities |
 | `envio supply-chain scan` | Supply chain security scan |
+| `envio supply-chain fix` | Auto-fix flagged packages |
 | `envio lock` | Generate reproducible lockfile |
 | `envio export` | Export to dockerfile/devcontainer |
 | `envio resurrect` | Analyze old repos and revive |
@@ -206,8 +207,10 @@ Python supply chain attacks are at an all-time high in 2026. Malicious packages 
 
 ```bash
 envio supply-chain scan -n my-env     # Full security intelligence scan
-envio supply-chain scan --deep        # Deep scan with web search
+envio supply-chain scan --deep        # Deep scan with LLM diff analysis
 envio supply-chain scan --all         # Scan all environments
+envio supply-chain fix -n my-env      # Auto-fix flagged packages
+envio audit -n my-env --supply-chain  # Combined CVE + supply chain scan
 ```
 
 **What it catches:**
@@ -216,6 +219,9 @@ envio supply-chain scan --all         # Scan all environments
 - **Malicious packages** — web-sourced intelligence from security researchers and community reports
 - **Suspicious patterns** — detects packages mimicking popular names with fake prefixes/suffixes
 - **Low-reputation packages** — flags new, unmaintained, or rarely downloaded packages
+- **Version diff analysis** — LLM-powered analysis of code changes between package versions (detects backdoors, data exfiltration, obfuscation)
+
+**Auto-remediation:** `envio supply-chain fix` can automatically replace typosquatted packages with the real ones and update your project files.
 
 No API keys needed. Protection works out of the box.
 

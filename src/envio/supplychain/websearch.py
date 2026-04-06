@@ -16,10 +16,10 @@ class WebSearchResult:
 def _search_duckduckgo(query: str) -> list[dict]:
     """Search DuckDuckGo and return results.
 
-    Uses the duckduckgo-search library which has no API key requirement.
+    Uses the ddgs library (formerly duckduckgo-search) which has no API key requirement.
     """
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
 
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=5))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from envio.supplychain.detector import (
@@ -174,6 +175,82 @@ def scan_package(
     )
 
 
+def _is_recently_updated(package_name: str, days: int = 30) -> bool:
+    """Check if a package has been updated in the last N days."""
+    try:
+        from envio.supplychain.diff import get_package_versions
+
+        versions = get_package_versions(package_name)
+        if not versions:
+            return False
+
+        latest = versions[-1]
+        upload_time = latest.get("upload_time", "")
+        if not upload_time:
+            return False
+
+        try:
+            upload_dt = datetime.fromisoformat(upload_time.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            return (now - upload_dt).days <= days
+        except (ValueError, TypeError):
+            return False
+    except Exception:
+        return False
+
+
+def _run_diff_analysis(
+    package_name: str,
+    current_version: str | None,
+) -> dict[str, Any]:
+    """Run diff analysis between current and latest version.
+
+    Returns dict with analysis results.
+    """
+    from envio.supplychain.analyzer import analyze_diff
+    from envio.supplychain.diff import diff_package, get_package_versions
+
+    versions = get_package_versions(package_name)
+    if not versions:
+        return {"error": "Could not fetch versions"}
+
+    latest_version = versions[-1]["version"]
+
+    if current_version is None or current_version == latest_version:
+        return {"skipped": True, "reason": "Already on latest version"}
+
+    diff_result = diff_package(package_name, current_version, latest_version)
+    if diff_result.error:
+        return {"error": diff_result.error}
+
+    analysis = analyze_diff(
+        package_name,
+        current_version,
+        latest_version,
+        diff_result.report,
+    )
+
+    if analysis.error:
+        return {"error": analysis.error}
+
+    return {
+        "skipped": False,
+        "verdict": analysis.verdict,
+        "risk_score": analysis.risk_score,
+        "categories": analysis.categories_found,
+        "findings": [
+            {
+                "category": f.category,
+                "file": f.file,
+                "description": f.description,
+                "severity": f.severity,
+            }
+            for f in analysis.findings
+        ],
+        "summary": analysis.summary,
+    }
+
+
 def scan_packages(
     packages: list[str],
     deep_mode: bool = False,
@@ -260,3 +337,45 @@ def fast_scan(package_spec: str) -> PackageRisk:
         suggestions=suggestions,
         details=details,
     )
+
+
+def scan_package_with_diff(
+    package_spec: str,
+    deep_mode: bool = False,
+) -> PackageRisk:
+    """Run full supply chain check including LLM diff analysis.
+
+    Diff analysis runs when:
+    - deep_mode is True (all packages)
+    - Package was updated in last 30 days
+    - Package is already flagged by static checks
+    """
+    pkg_name, pkg_version = _extract_package_name(package_spec)
+
+    risk = scan_package(package_spec, deep_mode=deep_mode)
+
+    should_diff = deep_mode or _is_recently_updated(pkg_name) or risk.risk_score >= 30
+
+    if should_diff:
+        diff_result = _run_diff_analysis(pkg_name, pkg_version)
+
+        if not diff_result.get("skipped") and not diff_result.get("error"):
+            risk.details["diff_analysis"] = diff_result
+            verdict = diff_result.get("verdict", "unknown")
+
+            if verdict == "malicious":
+                risk.risk_score = 100
+                risk.flags.append("LLM analysis: package appears malicious")
+            elif verdict == "suspicious":
+                risk.risk_score = min(risk.risk_score + 40, 100)
+                risk.flags.append(
+                    f"LLM analysis: suspicious changes detected ({diff_result.get('summary', '')})"
+                )
+            elif verdict == "safe":
+                risk.flags.append("LLM analysis: changes appear safe")
+
+            categories = diff_result.get("categories", [])
+            if categories:
+                risk.flags.append(f"Categories: {', '.join(categories)}")
+
+    return risk
