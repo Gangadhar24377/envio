@@ -10,7 +10,8 @@
 
 <p align="center">
   <strong>AI-Native Environment Orchestrator</strong><br>
-  <em>"It understands what you want, not just what you type."</em>
+  <em>"It understands what you want, not just what you type."</em><br>
+  <strong>The first environment manager that stops supply chain attacks before they happen.</strong>
 </p>
 
 ---
@@ -72,6 +73,7 @@ envio install requests flask
 | `envio list` | List all environments |
 | `envio activate my-env` | Show activation commands |
 | `envio audit` | Scan for vulnerabilities |
+| `envio supply-chain scan` | Supply chain security scan |
 | `envio lock` | Generate reproducible lockfile |
 | `envio export` | Export to dockerfile/devcontainer |
 | `envio resurrect` | Analyze old repos and revive |
@@ -197,6 +199,25 @@ envio audit                   # Shows picker if no env specified
 envio audit -n my-env        # Audit specific environment
 envio audit -n my-env --fix  # Auto-fix vulnerabilities
 ```
+
+### Supply Chain Security
+
+Python supply chain attacks are at an all-time high in 2026. Malicious packages with typosquatted names, hidden backdoors, and compromised maintainer accounts are published to PyPI daily. Envio is the first environment manager that protects you before you even install.
+
+```bash
+envio supply-chain scan -n my-env     # Full security intelligence scan
+envio supply-chain scan --deep        # Deep scan with web search
+envio supply-chain scan --all         # Scan all environments
+```
+
+**What it catches:**
+- **Typosquatting** — warns you before you install `reqeusts` instead of `requests`
+- **Known vulnerabilities** — real-time checks against OSV.dev vulnerability database
+- **Malicious packages** — web-sourced intelligence from security researchers and community reports
+- **Suspicious patterns** — detects packages mimicking popular names with fake prefixes/suffixes
+- **Low-reputation packages** — flags new, unmaintained, or rarely downloaded packages
+
+No API keys needed. Protection works out of the box.
 
 ### Multiple Export Formats
 

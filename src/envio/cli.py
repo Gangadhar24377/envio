@@ -22,6 +22,7 @@ from envio.commands.migrate import migrate
 from envio.commands.prompt import prompt
 from envio.commands.remove import remove
 from envio.commands.resurrect import resurrect_command
+from envio.commands.supply_chain import supply_chain
 from envio.commands.sync import sync
 
 
@@ -74,6 +75,7 @@ cli.add_command(remove)
 cli.add_command(add)
 cli.add_command(sync)
 cli.add_command(migrate)
+cli.add_command(supply_chain, "supply-chain")
 
 
 def main() -> None:

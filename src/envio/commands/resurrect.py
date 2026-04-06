@@ -158,6 +158,71 @@ def _analyze_directory(
     pkgs_with_versions = [f"{pkg}=={ver}" for pkg, ver in versions.items()]
     validated_packages = _validate_and_normalize_packages(pkgs_with_versions, console)
 
+    console.print_info("Running supply chain security checks...")
+    with console.spinner("Checking packages..."):
+        from envio.supplychain.scanner import scan_packages
+
+        scan_result = scan_packages(validated_packages, deep_mode=False)
+
+    if scan_result.critical_count > 0 or scan_result.high_count > 0:
+        from rich.table import Table
+
+        table = Table(
+            title="Supply Chain Risk Report",
+            show_header=True,
+            header_style="bold cyan",
+            border_style="yellow",
+        )
+        table.add_column("Package", style="cyan")
+        table.add_column("Version", style="white")
+        table.add_column("Risk", style="yellow", justify="right")
+        table.add_column("Level", style="yellow")
+        table.add_column("Flags", style="red")
+
+        for pkg in scan_result.packages:
+            if pkg.risk_score < 15:
+                continue
+
+            if pkg.risk_score >= 90:
+                level = "[bold red]CRITICAL[/]"
+            elif pkg.risk_score >= 70:
+                level = "[red]HIGH[/]"
+            elif pkg.risk_score >= 40:
+                level = "[yellow]MEDIUM[/]"
+            else:
+                level = "[dim]LOW[/]"
+
+            flags_text = "; ".join(pkg.flags[:2]) if pkg.flags else ""
+            if len(pkg.flags) > 2:
+                flags_text += f" (+{len(pkg.flags) - 2} more)"
+
+            table.add_row(
+                pkg.package,
+                pkg.version or "latest",
+                str(pkg.risk_score),
+                level,
+                flags_text,
+            )
+
+        console._safe_print(table)
+        console.print_info("")
+        console.print_info(
+            f"Summary: {scan_result.safe_count} safe, {scan_result.low_count} low, "
+            f"{scan_result.medium_count} medium, {scan_result.high_count} high, "
+            f"{scan_result.critical_count} critical"
+        )
+
+        blocked = [p for p in scan_result.packages if p.risk_score >= 90]
+        if blocked:
+            blocked_names = [p.package for p in blocked]
+            console.print_warning(f"Critical risk packages: {', '.join(blocked_names)}")
+            if not console.confirm(
+                "These packages may be compromised. Continue anyway?",
+                default=False,
+            ):
+                console.print_warning("Aborted. No environment was resurrected.")
+                return
+
     validated_versions = {}
     for pkg_spec in validated_packages:
         if "==" in pkg_spec:
