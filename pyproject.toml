@@ -40,6 +40,7 @@ dependencies = [
     "tomli_w>=1.0.0",
     "pyyaml>=6.0",
     "pip-audit",
+    "duckduckgo-search>=6.0.0",
 ]
 
 [project.license]

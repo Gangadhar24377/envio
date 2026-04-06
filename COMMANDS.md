@@ -433,6 +433,61 @@ envio lock -n my-env --format json
 
 ## Advanced Features
 
+### `envio supply-chain`
+
+Supply chain security scanning and monitoring.
+
+#### `envio supply-chain scan`
+
+Scan an environment for supply chain risks including typosquatting, known vulnerabilities, suspicious patterns, and web-sourced security intelligence.
+
+```bash
+# Scan current directory environment
+envio supply-chain scan
+
+# Scan specific environment by name
+envio supply-chain scan -n my-env
+
+# Scan with explicit path
+envio supply-chain scan -p /path/to/env
+
+# Deep scan with web search on all packages
+envio supply-chain scan --deep
+
+# Scan all registered environments
+envio supply-chain scan --all
+```
+
+**What it checks:**
+- Typosquatting detection (Levenshtein distance against top 10k PyPI packages)
+- Known vulnerabilities via OSV.dev (free, no API key needed)
+- Package reputation scoring (download count, age, maintainer count)
+- Suspicious naming patterns (mimicking popular packages)
+- Web-sourced security intelligence via DuckDuckGo (no API key needed)
+
+**Risk levels:**
+- **CRITICAL (90-100):** Known vulnerability or confirmed malicious
+- **HIGH (70-89):** High risk -- investigate before installing
+- **MEDIUM (40-69):** Review recommended
+- **LOW (15-39):** Minor concerns
+- **SAFE (0-14):** No risks detected
+
+**Web search behavior:**
+- Always searches for: packages not in top 10k, flagged by static analysis, very new packages (< 30 days), low download count (< 10k/month)
+- Never searches for: top 1000 packages with no flags (fast path)
+- `--deep` flag searches all packages regardless of risk level
+
+#### `envio supply-chain cache`
+
+Manage the scan result cache.
+
+```bash
+# Clear all cached scan results
+envio supply-chain cache --clear
+```
+
+---
+
 ### `envio resurrect`
 
 Analyze dead/unmaintained repositories and generate requirements.

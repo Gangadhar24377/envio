@@ -141,6 +141,7 @@ def _normalize_package(pkg: str) -> list[str]:
     """
     # Extract package name and version
     version_spec = None
+    pkg_version = None
     if "==" in pkg:
         pkg_name, pkg_version = pkg.split("==", 1)
         pkg_name = pkg_name.strip().lower()
@@ -201,8 +202,7 @@ def _validate_and_normalize_packages(packages: list[str], console) -> list[str]:
         result, status = _normalize_package(pkg)
 
         if status == "not_found":
-            issues.append(f"  {pkg} → not found on PyPI")
-            # Try to find latest version using static dict first, then AI
+            issues.append(f"  {pkg} -> not found on PyPI")
             try:
                 pkg_name = pkg.split("==")[0].lower()
                 if pkg_name in IMPORT_TO_PYPI:
@@ -216,7 +216,7 @@ def _validate_and_normalize_packages(packages: list[str], console) -> list[str]:
                     data = response.json()
                     latest = data.get("info", {}).get("version", "unknown")
                     fixed = f"{pypi_name}=={latest}"
-                    console.print_info(f"  {pkg} → {fixed}")
+                    console.print_info(f"  {pkg} -> {fixed}")
                     normalized.append(fixed)
                 else:
                     normalized.append(result)
@@ -229,6 +229,69 @@ def _validate_and_normalize_packages(packages: list[str], console) -> list[str]:
         console.print_warning("Some packages have issues:" + "\n".join(issues))
 
     return normalized
+
+
+def _supply_chain_preinstall_check(
+    packages: list[str], console, strict: bool = False
+) -> bool:
+    """Run fast supply chain checks before installation.
+
+    Checks for typosquatting, known vulnerabilities, and suspicious patterns.
+    Warns the user and suggests alternatives for flagged packages.
+
+    Args:
+        packages: List of package specifications to check
+        console: Console UI for output
+        strict: If True, block installation of high-risk packages
+
+    Returns:
+        True if installation should proceed, False if blocked
+    """
+    from envio.supplychain.remediation import get_install_warning, suggest_alternative
+    from envio.supplychain.scanner import fast_scan
+
+    flagged_packages = []
+
+    for pkg_spec in packages:
+        risk = fast_scan(pkg_spec)
+
+        if risk.risk_score >= 20:
+            flagged_packages.append((pkg_spec, risk))
+
+    if not flagged_packages:
+        return True
+
+    console.print_warning("Supply chain warnings detected:")
+    console.print_info("")
+
+    for _pkg_spec, risk in flagged_packages:
+        warning = get_install_warning(risk)
+        if warning:
+            console.print_warning(warning)
+            console.print_info("")
+
+    if strict:
+        blocked = [pkg for pkg, risk in flagged_packages if risk.risk_score >= 70]
+        if blocked:
+            console.print_error(
+                f"Installation blocked for high-risk packages: {', '.join(blocked)}"
+            )
+            console.print_info(
+                "Use these packages without supply chain warnings, or run without --strict"
+            )
+            return False
+
+    for pkg_spec, risk in flagged_packages:
+        alternative = suggest_alternative(risk)
+        if alternative:
+            response = console.confirm(
+                f"Install '{pkg_spec}' or switch to '{alternative}'? (switch/install/skip)",
+                default=False,
+            )
+            if response is False:
+                return False
+
+    return True
 
 
 def _load_dotenv() -> None:
