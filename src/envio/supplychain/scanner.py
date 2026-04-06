@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from envio.supplychain.detector import (
     DetectionResult,
@@ -22,7 +23,7 @@ class PackageRisk:
     risk_score: int
     flags: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
-    details: dict = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -94,7 +95,7 @@ def scan_package(
     flags = []
     suggestions = []
     risk_score = 0
-    details = {}
+    details: dict[str, Any] = {}
 
     typo_result = check_typosquatting(pkg_name)
     details["typo"] = {
@@ -214,7 +215,7 @@ def fast_scan(package_spec: str) -> PackageRisk:
     flags = []
     suggestions = []
     risk_score = 0
-    details = {}
+    details: dict[str, Any] = {}
 
     typo_result = check_typosquatting(pkg_name)
     details["typo"] = {
