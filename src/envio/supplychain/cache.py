@@ -34,6 +34,7 @@ class SupplyChainCache:
             db_path = cache_dir / "supplychain.db"
         self._db_path = db_path
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._conn: sqlite3.Connection | None = None
         self._init_db()
 
     @classmethod
@@ -42,21 +43,27 @@ class SupplyChainCache:
             cls._instance = cls()
         return cls._instance
 
+    def _get_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = sqlite3.connect(self._db_path)
+        return self._conn
+
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS scan_cache (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    created_at REAL NOT NULL
-                )
-                """
+        conn = self._get_conn()
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scan_cache (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                category TEXT NOT NULL,
+                created_at REAL NOT NULL
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_cache_category ON scan_cache(category)"
-            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cache_category ON scan_cache(category)"
+        )
+        conn.commit()
 
     def _get_ttl(self, category: str) -> int:
         ttls = {
@@ -72,11 +79,11 @@ class SupplyChainCache:
         ttl = self._get_ttl(category)
         now = time.time()
 
-        with sqlite3.connect(self._db_path) as conn:
-            row = conn.execute(
-                "SELECT value, created_at FROM scan_cache WHERE key = ?",
-                (cache_key,),
-            ).fetchone()
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT value, created_at FROM scan_cache WHERE key = ?",
+            (cache_key,),
+        ).fetchone()
 
         if row is None:
             return None
@@ -96,22 +103,30 @@ class SupplyChainCache:
         now = time.time()
         serialized = json.dumps(value)
 
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO scan_cache (key, value, category, created_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (cache_key, serialized, category, now),
-            )
+        conn = self._get_conn()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO scan_cache (key, value, category, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (cache_key, serialized, category, now),
+        )
+        conn.commit()
 
     def delete(self, key: str) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute("DELETE FROM scan_cache WHERE key = ?", (key,))
+        conn = self._get_conn()
+        conn.execute("DELETE FROM scan_cache WHERE key = ?", (key,))
+        conn.commit()
 
     def clear(self, category: str | None = None) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            if category:
-                conn.execute("DELETE FROM scan_cache WHERE category = ?", (category,))
-            else:
-                conn.execute("DELETE FROM scan_cache")
+        conn = self._get_conn()
+        if category:
+            conn.execute("DELETE FROM scan_cache WHERE category = ?", (category,))
+        else:
+            conn.execute("DELETE FROM scan_cache")
+        conn.commit()
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None

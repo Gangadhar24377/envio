@@ -236,5 +236,314 @@ def cache_clear(clear: bool, verbose: bool) -> None:
         console.print_info("Usage: envio supply-chain cache --clear")
 
 
+@supply_chain.command("fix")
+@click.option("--name", "-n", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Environment path")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would be fixed without making changes"
+)
+@click.option(
+    "--update-project", is_flag=True, help="Update pyproject.toml or requirements.txt"
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def fix_command(
+    name: str | None,
+    path: str | None,
+    dry_run: bool,
+    update_project: bool,
+    verbose: bool,
+) -> None:
+    """Fix supply chain issues by replacing flagged packages.
+
+    Analyzes flagged packages and suggests safe alternatives.
+    Can update project files (pyproject.toml / requirements.txt) on confirmation.
+
+    Examples:
+        envio supply-chain fix -n my-env
+        envio supply-chain fix -n my-env --dry-run
+        envio supply-chain fix -n my-env --update-project
+    """
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Supply Chain Fix", "Auto-remediation")
+
+    try:
+        from envio.core.virtualenv_manager import VirtualEnvManager
+        from envio.supplychain.remediation import suggest_alternative
+        from envio.supplychain.scanner import scan_package_with_diff
+
+        env_path = _find_environment(name, path, console)
+        if not env_path:
+            return
+
+        manager = VirtualEnvManager()
+        if not manager.exists(env_path):
+            console.print_error(f"Virtual environment not found at: {env_path}")
+            return
+
+        console.print_info(f"Scanning environment: {env_path}")
+
+        packages = _get_installed_packages(env_path, manager)
+        if not packages:
+            console.print_warning("No packages found in environment")
+            return
+
+        console.print_info(f"Analyzing {len(packages)} package(s) for issues...")
+
+        flagged = []
+        with console.spinner("Running supply chain checks..."):
+            for pkg_spec in packages:
+                risk = scan_package_with_diff(pkg_spec, deep_mode=False)
+                if risk.risk_score >= 20:
+                    flagged.append(risk)
+
+        if not flagged:
+            console.print_success("No supply chain issues found")
+            return
+
+        console.print_warning(f"Found {len(flagged)} package(s) with issues:")
+        console.print_info("")
+
+        fixes = []
+        for risk in flagged:
+            alternative = suggest_alternative(risk)
+            if alternative:
+                fixes.append(
+                    {
+                        "package": risk.package,
+                        "version": risk.version,
+                        "alternative": alternative,
+                        "risk_score": risk.risk_score,
+                        "flags": risk.flags,
+                        "reason": "typo or suspicious name",
+                    }
+                )
+            elif risk.risk_score >= 90:
+                fixes.append(
+                    {
+                        "package": risk.package,
+                        "version": risk.version,
+                        "alternative": None,
+                        "risk_score": risk.risk_score,
+                        "flags": risk.flags,
+                        "reason": "high risk (consider removing)",
+                    }
+                )
+            else:
+                fixes.append(
+                    {
+                        "package": risk.package,
+                        "version": risk.version,
+                        "alternative": None,
+                        "risk_score": risk.risk_score,
+                        "flags": risk.flags,
+                        "reason": "; ".join(risk.flags[:2]),
+                    }
+                )
+
+        if dry_run:
+            console.print_info("[DRY RUN] The following changes would be made:")
+            console.print_info("")
+
+        from rich.table import Table
+
+        table = Table(
+            title="Suggested Fixes",
+            show_header=True,
+            header_style="bold cyan",
+            border_style="dim",
+        )
+        table.add_column("Current", style="red")
+        table.add_column("Suggested", style="green")
+        table.add_column("Risk", style="yellow", justify="right")
+        table.add_column("Reason", style="white")
+
+        for fix in fixes:
+            current = str(fix["package"])
+            fix_version = fix.get("version")
+            if fix_version:
+                current += f"=={fix_version}"
+
+            suggested = fix["alternative"] or "[remove]"
+            if fix["alternative"] and not dry_run:
+                suggested = fix["alternative"]
+
+            reason = fix["reason"]
+            if isinstance(reason, list):
+                reason = "; ".join(reason[:2])
+
+            table.add_row(
+                current,
+                str(suggested),
+                str(fix["risk_score"]),
+                str(reason),
+            )
+
+        console._safe_print(table)
+        console.print_info("")
+
+        if dry_run:
+            console.print_info("[DRY RUN] No changes were made.")
+            return
+
+        swappable = [f for f in fixes if f["alternative"]]
+        if not swappable:
+            console.print_warning("No automatic fixes available")
+            console.print_info("Review the flagged packages above and decide manually.")
+            return
+
+        console.print_info(f"{len(swappable)} package(s) can be auto-fixed.")
+
+        if not console.confirm("Apply these fixes?", default=True):
+            console.print_warning("Aborted. No changes were made.")
+            return
+
+        console.print_info("Applying fixes...")
+
+        for fix in swappable:
+            console.print_info(
+                f"  Replacing '{fix['package']}' with '{fix['alternative']}'..."
+            )
+
+        import subprocess
+
+        python_path = manager.get_python_path(env_path)
+
+        for fix in swappable:
+            pkg = str(fix["package"])
+            alt = str(fix["alternative"])
+            result = subprocess.run(
+                [str(python_path), "-m", "pip", "install", alt],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode == 0:
+                console.print_success(f"  Installed '{alt}'")
+                uninstall_result = subprocess.run(
+                    [str(python_path), "-m", "pip", "uninstall", "-y", pkg],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if uninstall_result.returncode == 0:
+                    console.print_success(f"  Removed '{pkg}'")
+                else:
+                    console.print_warning(
+                        f"  Could not remove '{pkg}' (may not be installed)"
+                    )
+            else:
+                console.print_error(f"  Failed to install '{alt}'")
+                if verbose:
+                    console.print_code_block(result.stderr, "text")
+
+        if update_project:
+            _update_project_file(fixes, console)
+
+        console.print_success("Supply chain fixes applied!")
+
+    except Exception as exc:
+        console.print_error(f"Error: {exc}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+
+
+def _update_project_file(fixes: list[dict], console) -> None:
+    """Update pyproject.toml or requirements.txt with fixed packages."""
+    from pathlib import Path
+
+    pyproject = Path("pyproject.toml")
+    requirements = Path("requirements.txt")
+
+    if pyproject.exists():
+        _update_pyproject_toml(fixes, pyproject, console)
+    elif requirements.exists():
+        _update_requirements_txt(fixes, requirements, console)
+    else:
+        console.print_warning("No pyproject.toml or requirements.txt found to update")
+
+
+def _update_pyproject_toml(fixes: list[dict], filepath: Path, console) -> None:
+    """Update dependencies in pyproject.toml."""
+    try:
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib
+        import tomli_w
+
+        with open(filepath, "rb") as f:
+            data = tomllib.load(f)
+
+        deps = data.get("project", {}).get("dependencies", [])
+        updated = False
+
+        for i, dep in enumerate(deps):
+            dep_name = dep.split("==")[0].split(">=")[0].split("<=")[0].strip().lower()
+            for fix in fixes:
+                if fix["alternative"] and fix["package"].lower() == dep_name:
+                    deps[i] = fix["alternative"]
+                    updated = True
+                    console.print_info(
+                        f"  Updated pyproject.toml: {fix['package']} -> {fix['alternative']}"
+                    )
+
+        if updated:
+            data["project"]["dependencies"] = deps
+            with open(filepath, "wb") as f:
+                tomli_w.dump(data, f)
+            console.print_success("pyproject.toml updated")
+        else:
+            console.print_info("No dependencies to update in pyproject.toml")
+
+    except Exception as exc:
+        console.print_error(f"Failed to update pyproject.toml: {exc}")
+
+
+def _update_requirements_txt(fixes: list[dict], filepath: Path, console) -> None:
+    """Update requirements.txt with fixed packages."""
+    try:
+        with open(filepath) as f:
+            lines = f.readlines()
+
+        updated = False
+        new_lines = []
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith("-"):
+                new_lines.append(line)
+                continue
+
+            dep_name = (
+                stripped.split("==")[0].split(">=")[0].split("<=")[0].strip().lower()
+            )
+            replaced = False
+
+            for fix in fixes:
+                if fix["alternative"] and fix["package"].lower() == dep_name:
+                    new_lines.append(fix["alternative"] + "\n")
+                    updated = True
+                    replaced = True
+                    console.print_info(
+                        f"  Updated requirements.txt: {fix['package']} -> {fix['alternative']}"
+                    )
+                    break
+
+            if not replaced:
+                new_lines.append(line)
+
+        if updated:
+            with open(filepath, "w") as f:
+                f.writelines(new_lines)
+            console.print_success("requirements.txt updated")
+        else:
+            console.print_info("No dependencies to update in requirements.txt")
+
+    except Exception as exc:
+        console.print_error(f"Failed to update requirements.txt: {exc}")
+
+
 supply_chain.add_command(scan)
 supply_chain.add_command(cache_clear)
+supply_chain.add_command(fix_command)

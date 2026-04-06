@@ -486,6 +486,58 @@ Manage the scan result cache.
 envio supply-chain cache --clear
 ```
 
+#### `envio supply-chain fix`
+
+Fix supply chain issues by replacing flagged packages with safe alternatives.
+
+```bash
+# Fix flagged packages in current environment
+envio supply-chain fix
+
+# Fix packages in a specific environment
+envio supply-chain fix -n my-env
+
+# Dry run - see what would be fixed
+envio supply-chain fix -n my-env --dry-run
+
+# Fix and update project files (pyproject.toml or requirements.txt)
+envio supply-chain fix -n my-env --update-project
+```
+
+**What it does:**
+1. Scans environment for supply chain risks
+2. Identifies packages that can be auto-fixed (typosquats, suspicious names)
+3. Suggests safe alternatives
+4. On confirmation: installs the safe alternative and removes the flagged package
+5. With `--update-project`: also updates your project dependency file
+
+**Auto-fixable issues:**
+- Typosquatted packages (e.g., `reqeusts` -> `requests`)
+- Packages with suspicious naming patterns (e.g., `requests-official` -> `requests`)
+
+**Non-auto-fixable issues:**
+- Known vulnerabilities: suggest upgrading to patched version
+- Malicious packages detected via LLM analysis: suggest removal
+
+---
+
+### `envio audit --supply-chain`
+
+Combine CVE vulnerability scanning with supply chain security checks in a single command.
+
+```bash
+# CVE scan only (existing behavior)
+envio audit -n my-env
+
+# CVE scan + supply chain security
+envio audit -n my-env --supply-chain
+
+# Full security audit with auto-fix
+envio audit -n my-env --supply-chain --fix
+```
+
+This runs both `pip-audit` (for known CVEs) and Envio's supply chain scanner (for typosquatting, malicious packages, reputation analysis) in one pass.
+
 ---
 
 ### `envio resurrect`
