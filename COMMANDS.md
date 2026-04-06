@@ -149,6 +149,122 @@ envio install flask -y
 
 ---
 
+### `envio add`
+
+Add packages to the current project and install them into `.venv`.
+
+```bash
+# Add packages (creates pyproject.toml if none exists)
+envio add requests flask
+
+# Add with natural language
+envio add "fastapi with postgres and redis"
+
+# Add to a dependency group
+envio add pytest --group dev
+envio add black isort --group test
+
+# Force requirements.txt mode even if pyproject.toml exists
+envio add requests --legacy
+
+# Dry run - see what would happen without making changes
+envio add flask --dry-run
+
+# Skip confirmation prompt
+envio add numpy -y
+```
+
+**Decision tree:**
+1. `pyproject.toml` present → edits `[project.dependencies]` (or optional group)
+2. `requirements.txt` present → edits `requirements.txt`
+3. Neither exists → creates a minimal `pyproject.toml`, then installs
+
+**How it works:**
+1. Detects existing project format (pyproject.toml, requirements.txt, or none)
+2. Resolves packages (supports natural language via NLP agent)
+3. Validates package names against PyPI
+4. Updates the project file
+5. Installs into `./.venv` using uv
+
+---
+
+### `envio sync`
+
+Sync the environment with the current project file. Installs exactly the packages declared in `pyproject.toml` or `requirements.txt`.
+
+```bash
+# Sync default dependencies only
+envio sync
+
+# Sync including a specific dependency group
+envio sync --group dev
+envio sync --group dev --group test
+
+# Sync all optional dependency groups
+envio sync --all-groups
+
+# Dry run - see what would be installed
+envio sync --dry-run
+
+# Skip confirmation prompt
+envio sync -y
+```
+
+**Behavior by project mode:**
+- **pyproject.toml**: installs `[project.dependencies]` + any requested groups
+- **requirements.txt**: installs everything in the file
+- **No project file**: errors — run `envio add <packages>` first
+
+**When to use:** After cloning a repo, switching branches, or updating dependency declarations to ensure your `.venv` matches the project file exactly.
+
+---
+
+### `envio migrate`
+
+Convert any Python project format to a standards-compliant PEP 621 `pyproject.toml`.
+
+```bash
+# Auto-detect format and migrate
+envio migrate
+
+# Migrate a specific directory
+envio migrate /path/to/project
+
+# Force a specific source format
+envio migrate --from Poetry
+envio migrate --from Pipenv
+envio migrate --from conda
+
+# Dry run - see what would be written
+envio migrate --dry-run
+
+# Keep original project files after migration
+envio migrate --keep
+```
+
+**Supported source formats:**
+- `requirements.txt` (+ `requirements-dev.txt`, `requirements-test.txt`, etc.)
+- `[tool.poetry]` in pyproject.toml (Poetry)
+- `Pipfile` / `Pipfile.lock` (Pipenv)
+- `environment.yml` / `environment.yaml` (conda)
+- `setup.py` + `setup.cfg` (legacy setuptools)
+- `requirements.in` (pip-tools)
+- `pixi.toml` (pixi)
+
+**What it does:**
+1. Detects the source format (or uses `--from` if specified)
+2. Extracts project metadata, dependencies, and dependency groups
+3. Creates a PEP 621 compliant `pyproject.toml`
+4. Optionally removes original project files (use `--keep` to preserve them)
+
+**After migration:**
+```bash
+envio sync              # install all dependencies
+envio sync --all-groups # include dev/test groups
+```
+
+---
+
 ## Environment Management
 
 ### `envio list`
