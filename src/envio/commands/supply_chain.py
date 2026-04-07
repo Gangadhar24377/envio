@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import click
@@ -134,7 +135,7 @@ def scan(
 
 
 def _scan_all_environments(console, deep: bool, verbose: bool) -> None:
-    """Scan all registered environments."""
+    """Scan all registered environments in parallel."""
     try:
         from envio.core.registry import EnvironmentRegistry
         from envio.core.virtualenv_manager import VirtualEnvManager
@@ -150,20 +151,41 @@ def _scan_all_environments(console, deep: bool, verbose: bool) -> None:
 
         console.print_info(f"Scanning {len(environments)} environment(s)...")
 
-        for env in environments:
+        # Collect packages for all envs in parallel, then scan each in parallel.
+        def _scan_env(env: dict) -> tuple[str, object | None]:
             env_path = Path(env["path"])
             if not manager.exists(env_path):
-                console.print_warning(f"Skipping {env['name']}: environment not found")
-                continue
-
-            console.print_info(f"\n--- {env['name']} ({env_path}) ---")
+                return env["name"], None
             packages = _get_installed_packages(env_path, manager)
             if not packages:
-                console.print_warning("  No packages found")
+                return env["name"], None
+            result = scan_packages(packages, deep_mode=deep)
+            return env["name"], result
+
+        env_results: dict[str, object] = {}
+
+        with ThreadPoolExecutor(max_workers=min(len(environments), 5)) as executor:
+            future_to_env = {
+                executor.submit(_scan_env, env): env for env in environments
+            }
+            for future in as_completed(future_to_env):
+                env_name, result = future.result()
+                env_results[env_name] = result
+
+        # Display results in registration order.
+        for env in environments:
+            env_name = env["name"]
+            env_path = Path(env["path"])
+            result = env_results.get(env_name)
+
+            if not manager.exists(env_path):
+                console.print_warning(f"Skipping {env_name}: environment not found")
                 continue
 
-            with console.spinner(f"  Scanning {env['name']}..."):
-                result = scan_packages(packages, deep_mode=deep)
+            console.print_info(f"\n--- {env_name} ({env_path}) ---")
+            if result is None:
+                console.print_warning("  No packages found")
+                continue
 
             _display_results(console, result, verbose, indent="  ")
 
@@ -454,37 +476,75 @@ def fix_command(
                 f"  Replacing '{fix['package']}' with '{fix['alternative']}'..."
             )
 
+        import shutil
         import subprocess
 
         python_path = manager.get_python_path(env_path)
+        alt_packages = [str(fix["alternative"]) for fix in swappable]
+        old_packages = [str(fix["package"]) for fix in swappable]
 
-        for fix in swappable:
-            pkg = str(fix["package"])
-            alt = str(fix["alternative"])
-            result = subprocess.run(
-                [str(python_path), "-m", "pip", "install", alt],
+        # Prefer uv for batched installs; fall back to pip.
+        use_uv = shutil.which("uv") is not None
+
+        if use_uv:
+            install_cmd = [
+                "uv",
+                "pip",
+                "install",
+                "--python",
+                str(python_path),
+            ] + alt_packages
+        else:
+            install_cmd = [str(python_path), "-m", "pip", "install"] + alt_packages
+
+        install_result = subprocess.run(
+            install_cmd,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+
+        if install_result.returncode == 0:
+            for alt in alt_packages:
+                console.print_success(f"  Installed '{alt}'")
+
+            # Uninstall all old packages in one call.
+            if use_uv:
+                uninstall_cmd = [
+                    "uv",
+                    "pip",
+                    "uninstall",
+                    "--python",
+                    str(python_path),
+                ] + old_packages
+            else:
+                uninstall_cmd = [
+                    str(python_path),
+                    "-m",
+                    "pip",
+                    "uninstall",
+                    "-y",
+                ] + old_packages
+
+            uninstall_result = subprocess.run(
+                uninstall_cmd,
                 capture_output=True,
                 text=True,
                 timeout=120,
             )
-            if result.returncode == 0:
-                console.print_success(f"  Installed '{alt}'")
-                uninstall_result = subprocess.run(
-                    [str(python_path), "-m", "pip", "uninstall", "-y", pkg],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                if uninstall_result.returncode == 0:
+            if uninstall_result.returncode == 0:
+                for pkg in old_packages:
                     console.print_success(f"  Removed '{pkg}'")
-                else:
-                    console.print_warning(
-                        f"  Could not remove '{pkg}' (may not be installed)"
-                    )
             else:
-                console.print_error(f"  Failed to install '{alt}'")
+                console.print_warning(
+                    "Could not remove some old packages (may not be installed)"
+                )
                 if verbose:
-                    console.print_code_block(result.stderr, "text")
+                    console.print_code_block(uninstall_result.stderr, "text")
+        else:
+            console.print_error("Failed to install replacement package(s)")
+            if verbose:
+                console.print_code_block(install_result.stderr, "text")
 
         if update_project:
             _update_project_file(fixes, console)
@@ -743,3 +803,96 @@ def verify_command(
 
 
 supply_chain.add_command(verify_command)
+
+
+@supply_chain.command("diff")
+@click.argument("package")
+@click.argument("old_version")
+@click.argument("new_version")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def diff_command(
+    package: str,
+    old_version: str,
+    new_version: str,
+    verbose: bool,
+) -> None:
+    """Compare two versions of a package and show what changed.
+
+    \b
+    Examples:
+        envio supply-chain diff requests 2.28.0 2.31.0
+        envio supply-chain diff numpy 1.24.0 1.26.0
+    """
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header(
+        "Envio Supply Chain Diff",
+        f"{package}: {old_version} -> {new_version}",
+    )
+
+    try:
+        from envio.supplychain.diff import diff_package
+
+        with console.spinner(
+            f"Downloading {package} {old_version} and {new_version}..."
+        ):
+            result = diff_package(package, old_version, new_version)
+
+        if result.error:
+            console.print_error(result.error)
+            return
+
+        added = result.added_files
+        deleted = result.deleted_files
+        modified = result.modified_files
+        total = len(added) + len(deleted) + len(modified)
+
+        if total == 0:
+            console.print_success("No file changes between versions.")
+            return
+
+        console.print_info(
+            f"Summary: {len(added)} added, {len(deleted)} deleted, {len(modified)} modified"
+        )
+
+        from rich.table import Table
+
+        if added:
+            table = Table(
+                show_header=True, header_style="bold green", border_style="dim"
+            )
+            table.add_column("Added files", style="green")
+            table.add_column("Size", style="dim", justify="right")
+            for f in added:
+                size = f"+{f.size_change}" if f.size_change else "—"
+                table.add_row(f.path, size)
+            console._safe_print(table)
+
+        if deleted:
+            table = Table(show_header=True, header_style="bold red", border_style="dim")
+            table.add_column("Deleted files", style="red")
+            table.add_column("Size", style="dim", justify="right")
+            for f in deleted:
+                size = f"-{abs(f.size_change)}" if f.size_change else "—"
+                table.add_row(f.path, size)
+            console._safe_print(table)
+
+        if modified:
+            table = Table(
+                show_header=True, header_style="bold yellow", border_style="dim"
+            )
+            table.add_column("Modified files", style="yellow")
+            table.add_column("Size change", style="dim", justify="right")
+            for f in modified:
+                size = f"{f.size_change:+d}" if f.size_change != 0 else "—"
+                table.add_row(f.path, size)
+            console._safe_print(table)
+
+    except Exception as exc:
+        console.print_error(f"Error: {exc}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+        raise SystemExit(1) from exc
+
+
+supply_chain.add_command(diff_command)

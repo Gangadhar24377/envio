@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -53,8 +54,16 @@ def _parse_download_count(package_name: str) -> int:
 
 
 def score_package(package_name: str) -> ReputationResult:
-    """Score a package's reputation on a 0-100 scale (higher = riskier)."""
-    info = _get_pypi_info(package_name)
+    """Score a package's reputation on a 0-100 scale (higher = riskier).
+
+    Fetches PyPI metadata and download statistics concurrently.
+    """
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        info_future = executor.submit(_get_pypi_info, package_name)
+        downloads_future = executor.submit(_parse_download_count, package_name)
+
+    info = info_future.result()
+    prefetched_downloads = downloads_future.result()
 
     if info is None:
         return ReputationResult(
@@ -69,7 +78,7 @@ def score_package(package_name: str) -> ReputationResult:
     info_data = info.get("info", {})
     releases = info.get("releases", {})
 
-    download_count = _parse_download_count(package_name)
+    download_count = prefetched_downloads
     release_count = len([v for v in releases.values() if v])
 
     first_release = None

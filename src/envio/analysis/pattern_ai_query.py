@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -82,16 +83,27 @@ def query_patterns_batch(
     Returns:
         Dict mapping pattern names to version info
     """
-    results = {}
+    results: dict[str, dict[str, str]] = {}
 
-    for pattern_info in patterns:
-        name = pattern_info.get("name", "")
-        description = pattern_info.get("description", "")
+    valid_patterns = [p for p in patterns if p.get("name", "")]
 
-        if not name:
-            continue
+    if not valid_patterns:
+        return results
 
-        result = query_ai_for_pattern(name, description, llm_client)
+    max_workers = min(len(valid_patterns), 8)
+    future_to_name: dict = {}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for pattern_info in valid_patterns:
+            name = pattern_info["name"]
+            description = pattern_info.get("description", "")
+            future = executor.submit(
+                query_ai_for_pattern, name, description, llm_client
+            )
+            future_to_name[future] = name
+
+    for future, name in future_to_name.items():
+        result = future.result()
         if result:
             results[name] = result
 

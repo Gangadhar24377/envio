@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 import requests
@@ -86,7 +87,7 @@ def find_package_for_import(import_name: str) -> str:
         _save_cache({import_name: package_name})
         return package_name
 
-    # 3. Try common variations (e.g., remove underscores, try with different case)
+    # 3. Try common variations concurrently; return on first success.
     common_variations = [
         import_name.replace("_", "-"),
         import_name.replace("-", "_"),
@@ -94,13 +95,24 @@ def find_package_for_import(import_name: str) -> str:
         import_name.upper(),
         import_name.title(),
     ]
+    unique_variations = [v for v in common_variations if v != import_name]
 
-    for variation in common_variations:
-        if variation != import_name:
-            result = _query_pypi_for_import(variation)
-            if result:
-                _save_cache({import_name: result})
-                return result
+    if unique_variations:
+        with ThreadPoolExecutor(max_workers=len(unique_variations)) as executor:
+            future_to_var = {
+                executor.submit(_query_pypi_for_import, v): v for v in unique_variations
+            }
+            pending = set(future_to_var.keys())
+            while pending:
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    result = future.result()
+                    if result:
+                        # Cancel remaining and return first success.
+                        for f in pending:
+                            f.cancel()
+                        _save_cache({import_name: result})
+                        return result
 
     # 4. If not found, return the import name as-is (best guess)
     _save_cache({import_name: import_name})
@@ -116,9 +128,21 @@ def find_packages_for_imports(import_names: list[str]) -> dict[str, str]:
     Returns:
         Dictionary mapping import names to package names
     """
-    results = {}
-    for name in import_names:
-        results[name] = find_package_for_import(name)
+    if not import_names:
+        return {}
+
+    results: dict[str, str] = {}
+    max_workers = min(len(import_names), 10)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_name = {
+            executor.submit(find_package_for_import, name): name
+            for name in import_names
+        }
+        for future in future_to_name:
+            name = future_to_name[future]
+            results[name] = future.result()
+
     return results
 
 

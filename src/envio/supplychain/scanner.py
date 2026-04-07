@@ -231,9 +231,15 @@ def scan_packages(
         if cached is not None:
             return (idx, cached)
 
-        typo_result = check_typosquatting(pkg_name)
-        suspicious = check_suspicious_patterns(pkg_name)
-        reputation = score_package(pkg_name)
+        # Run independent checks concurrently within this worker.
+        with ThreadPoolExecutor(max_workers=3) as inner:
+            typo_fut = inner.submit(check_typosquatting, pkg_name)
+            suspicious_fut = inner.submit(check_suspicious_patterns, pkg_name)
+            reputation_fut = inner.submit(score_package, pkg_name)
+
+        typo_result = typo_fut.result()
+        suspicious = suspicious_fut.result()
+        reputation = reputation_fut.result()
 
         osv_key = f"{pkg_name}:{pkg_version}" if pkg_version else pkg_name
         osv_result = osv_results_map.get(
@@ -470,9 +476,14 @@ def scan_package(
     """Run all supply chain checks on a single package."""
     pkg_name, pkg_version = _extract_package_name(package_spec)
 
-    typo_result = check_typosquatting(pkg_name)
-    suspicious = check_suspicious_patterns(pkg_name)
-    reputation = score_package(pkg_name)
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        typo_fut = executor.submit(check_typosquatting, pkg_name)
+        suspicious_fut = executor.submit(check_suspicious_patterns, pkg_name)
+        reputation_fut = executor.submit(score_package, pkg_name)
+
+    typo_result = typo_fut.result()
+    suspicious = suspicious_fut.result()
+    reputation = reputation_fut.result()
     osv_result = check_osv(pkg_name, pkg_version)
 
     web_result = None

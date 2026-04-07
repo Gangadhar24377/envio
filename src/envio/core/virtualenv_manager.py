@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -262,34 +263,43 @@ class VirtualEnvManager:
             return []
 
         environments = []
-        for item in base_path.iterdir():
-            # Skip symlinks to prevent issues
-            if item.is_symlink():
-                continue
-            if item.is_dir() and self.exists(item):
-                # Try to get Python version
-                python_path = self.get_python_path(item)
-                try:
-                    result = subprocess.run(
-                        [str(python_path), "--version"],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
-                    python_version = (
-                        result.stdout.strip() if result.returncode == 0 else "unknown"
-                    )
-                except Exception:
-                    python_version = "unknown"
 
-                environments.append(
-                    {
-                        "name": item.name,
-                        "path": str(item),
-                        "python_version": python_version,
-                    }
+        # Collect all candidate directories first.
+        candidates = [
+            item
+            for item in base_path.iterdir()
+            if not item.is_symlink() and item.is_dir() and self.exists(item)
+        ]
+
+        def _probe_version(item: Path) -> dict[str, str]:
+            python_path = self.get_python_path(item)
+            try:
+                result = subprocess.run(
+                    [str(python_path), "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
+                python_version = (
+                    result.stdout.strip() if result.returncode == 0 else "unknown"
+                )
+            except Exception:
+                python_version = "unknown"
+            return {
+                "name": item.name,
+                "path": str(item),
+                "python_version": python_version,
+            }
 
+        with ThreadPoolExecutor(max_workers=min(len(candidates), 8)) as executor:
+            futures = {
+                executor.submit(_probe_version, item): item for item in candidates
+            }
+            for future in as_completed(futures):
+                environments.append(future.result())
+
+        # Sort by name for stable output.
+        environments.sort(key=lambda e: e["name"])
         return environments
 
     def uninstall_packages(
