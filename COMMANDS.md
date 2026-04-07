@@ -456,6 +456,15 @@ envio supply-chain scan --deep
 
 # Scan all registered environments
 envio supply-chain scan --all
+
+# Pin all installed packages to a security lockfile after scanning
+envio supply-chain scan --pin-versions
+
+# Pin versions and also write full JSON metadata
+envio supply-chain scan --pin-versions --pin-json
+
+# Write lockfile to a custom directory
+envio supply-chain scan --pin-versions --output-dir ./security
 ```
 
 **What it checks:**
@@ -476,6 +485,60 @@ envio supply-chain scan --all
 - Always searches for: packages not in top 10k, flagged by static analysis, very new packages (< 30 days), low download count (< 10k/month)
 - Never searches for: top 1000 packages with no flags (fast path)
 - `--deep` flag searches all packages regardless of risk level
+- Web searches are capped at **5 per scan session** to prevent rate limiting
+
+**Lockfile pinning (`--pin-versions`):**
+
+After completing the scan, writes `envio-security.lock` — a plain-text security lockfile that pins every installed package to its exact version and annotates flagged packages inline.
+
+```
+# envio security lockfile
+# generated: 2026-04-07T12:34:56+00:00
+# environment: /path/to/.venv
+# packages: 42  safe: 39  flagged: 3
+#
+requests==2.31.0                              # SAFE
+reqeusts==1.0.0                               # CRITICAL | Possible typo of 'requests'
+some-new-pkg==0.1.0                           # FLAGGED-LOW | Low download count
+```
+
+- `--pin-json` additionally writes `envio-security.lock.json` with full scan metadata (risk scores, flags, suggestions) in machine-readable form.
+- `--output-dir <path>` controls where both files are written (default: current directory).
+- Commit `envio-security.lock` to version control and use `envio supply-chain verify` in CI to enforce it.
+
+#### `envio supply-chain verify`
+
+Verify that installed packages in an environment exactly match a previously generated security lockfile. Exits with a non-zero status on any mismatch, making it suitable as a CI gate.
+
+```bash
+# Verify current environment against envio-security.lock
+envio supply-chain verify
+
+# Verify a specific environment
+envio supply-chain verify -n my-env
+
+# Verify against a lockfile in a different location
+envio supply-chain verify --lockfile ./security/envio-security.lock
+
+# Verbose output (shows all matched packages too)
+envio supply-chain verify -v
+```
+
+**Output:**
+- `ok  requests==2.31.0` — package matches pin (verbose only)
+- `MISMATCH  requests: pinned=2.31.0 installed=2.32.0` — version changed since last scan
+- `MISSING   reqeusts==1.0.0` — package in lockfile is not installed
+
+**Exit codes:**
+- `0` — all pins matched
+- `1` — any mismatch or missing package (also raised if lockfile not found)
+
+**Typical CI workflow:**
+
+```yaml
+- name: Verify supply chain lockfile
+  run: envio supply-chain verify --lockfile envio-security.lock
+```
 
 #### `envio supply-chain cache`
 
@@ -518,6 +581,41 @@ envio supply-chain fix -n my-env --update-project
 **Non-auto-fixable issues:**
 - Known vulnerabilities: suggest upgrading to patched version
 - Malicious packages detected via LLM analysis: suggest removal
+
+#### `envio supply-chain hook`
+
+Integrate supply chain scanning into your development workflow via pre-commit hooks and CI/CD pipelines.
+
+```bash
+# Install pre-commit hook (creates/updates .pre-commit-config.yaml)
+envio supply-chain hook install
+
+# Remove pre-commit hook
+envio supply-chain hook remove
+
+# Generate GitHub Actions workflow file
+envio supply-chain hook ci --platform github
+
+# Generate GitLab CI snippet
+envio supply-chain hook ci --platform gitlab
+```
+
+**`hook install`** — adds an `envio-supply-chain` entry to `.pre-commit-config.yaml`.
+- If the file already exists, the hook is appended.
+- If it does not exist, a minimal `.pre-commit-config.yaml` is created.
+- Running `git commit` will then automatically scan the environment before each commit.
+
+**`hook remove`** — removes the `envio-supply-chain` block from `.pre-commit-config.yaml`.
+
+**`hook ci --platform github`** — writes `.github/workflows/supply-chain.yml`:
+- Triggers on push, pull request, and a weekly schedule (Monday 6am UTC).
+- Runs both a normal scan and a `--deep` scan.
+
+**`hook ci --platform gitlab`** — writes `.gitlab-ci-supply-chain.yml`:
+- Runs on scheduled pipelines, merge requests, and the main branch.
+- Include this file in your main `.gitlab-ci.yml` with `include:`.
+
+**Supported platforms:** `github`, `gitlab`
 
 ---
 

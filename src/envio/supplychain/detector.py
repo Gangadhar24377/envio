@@ -1,4 +1,8 @@
-"""Typosquatting and suspicious pattern detection."""
+"""Typosquatting and suspicious pattern detection.
+
+Optimized with set-based lookups and prefix filtering to avoid
+O(n) Levenshtein scans through all 10k packages.
+"""
 
 from __future__ import annotations
 
@@ -39,37 +43,41 @@ def _levenshtein_distance(a: str, b: str) -> int:
     return prev_row[-1]
 
 
-def _load_top_packages(top_n: int = 10000) -> list[str]:
-    """Load top N PyPI packages by download count."""
+def _load_top_packages(top_n: int = 10000) -> tuple[list[str], set[str]]:
+    """Load top N PyPI packages by download count.
+
+    Returns both a list (for ordered iteration) and a set (for O(1) lookups).
+    """
     try:
         with urllib.request.urlopen(TOP_PACKAGES_URL, timeout=15) as resp:
             data = json.loads(resp.read())
-        return [row["project"].lower() for row in data["rows"][:top_n]]
+        names = [row["project"].lower() for row in data["rows"][:top_n]]
+        return names, set(names)
     except Exception:
-        return []
+        return [], set()
 
 
-def _get_top_packages() -> list[str]:
+def _get_top_packages() -> tuple[list[str], set[str]]:
     cache = SupplyChainCache.get_instance()
     cached = cache.get("top_packages", "detector")
     if cached is not None:
-        return cached
-    packages = _load_top_packages()
-    if packages:
-        cache.set("top_packages", "detector", packages)
-    return packages
+        return cached["list"], set(cached["set"])
+    pkg_list, pkg_set = _load_top_packages()
+    if pkg_list:
+        cache.set("top_packages", "detector", {"list": pkg_list, "set": list(pkg_set)})
+    return pkg_list, pkg_set
 
 
 def check_typosquatting(package_name: str) -> DetectionResult:
     """Check if a package name is a likely typo of a popular package.
 
-    Returns DetectionResult with typo status, suggested package, and confidence.
+    Optimized: uses set for O(1) membership, prefix filter before Levenshtein.
     """
     pkg = package_name.lower().strip()
 
-    top_packages = _get_top_packages()
+    top_list, top_set = _get_top_packages()
 
-    if pkg in top_packages:
+    if pkg in top_set:
         return DetectionResult(
             is_typo=False,
             suggested_package=None,
@@ -77,11 +85,16 @@ def check_typosquatting(package_name: str) -> DetectionResult:
             reason="Package is in the top 10k list",
         )
 
+    # Prefix filter: only check packages that share the first 2 characters
+    # This reduces the search space from 10k to ~200-500 candidates
+    prefix = pkg[:2]
+    candidates = [p for p in top_list if p.startswith(prefix)]
+
     best_match: str | None = None
     best_distance = float("inf")
     best_len = 0
 
-    for known_pkg in top_packages:
+    for known_pkg in candidates:
         dist = _levenshtein_distance(pkg, known_pkg)
         pkg_len = max(len(pkg), len(known_pkg))
         if pkg_len == 0:
@@ -116,6 +129,8 @@ def check_suspicious_patterns(package_name: str) -> list[str]:
     pkg = package_name.lower().strip()
     flags = []
 
+    _, top_set = _get_top_packages()
+
     known_suspicious_prefixes = [
         "py-",
         "python-",
@@ -139,14 +154,14 @@ def check_suspicious_patterns(package_name: str) -> list[str]:
     ]
 
     for prefix in known_suspicious_prefixes:
-        if pkg.startswith(prefix) and pkg[len(prefix) :] in _get_top_packages():
+        if pkg.startswith(prefix) and pkg[len(prefix) :] in top_set:
             flags.append(f"Suspicious prefix '{prefix}' mimicking a known package")
 
     for suffix in known_suspicious_suffixes:
-        if pkg.endswith(suffix) and pkg[: -len(suffix)] in _get_top_packages():
+        if pkg.endswith(suffix) and pkg[: -len(suffix)] in top_set:
             flags.append(f"Suspicious suffix '{suffix}' mimicking a known package")
 
-    if "-" in pkg and pkg.replace("-", "") in _get_top_packages():
+    if "-" in pkg and pkg.replace("-", "") in top_set:
         flags.append("Name differs from a top package only by hyphen placement")
 
     return flags
