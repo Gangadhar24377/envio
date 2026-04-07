@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import click
@@ -84,8 +85,15 @@ def _analyze_directory(
     inference = VersionInference()
 
     console.print_info(f"Scanning {directory} for Python files...")
-    with console.spinner("Analyzing imports..."):
-        categorized = analyzer.scan_directory(directory)
+
+    # Phase 1: scan imports and detect syntax patterns concurrently — both are
+    # read-only file traversals with no shared state.
+    with console.spinner("Analyzing imports and detecting syntax..."):
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            categorized_future = executor.submit(analyzer.scan_directory, directory)
+            pattern_future = executor.submit(detector.detect_from_directory, directory)
+        categorized = categorized_future.result()
+        pattern_results = pattern_future.result()
 
     third_party = categorized.get("third_party", [])
 
@@ -93,11 +101,14 @@ def _analyze_directory(
         console.print_warning("No third-party packages detected")
         return
 
-    from envio.analysis.package_mapping import find_package_for_import
+    from envio.analysis.package_mapping import find_packages_for_imports
+
+    with console.spinner("Mapping imports to packages..."):
+        import_map = find_packages_for_imports(third_party)
 
     mapped_packages = []
     for imp in third_party:
-        pkg_name = find_package_for_import(imp)
+        pkg_name = import_map.get(imp, imp)
         mapped_packages.append(pkg_name)
         if pkg_name != imp:
             console.print_info(f"  {imp} -> {pkg_name}")
@@ -108,9 +119,8 @@ def _analyze_directory(
     if len(third_party) > 1:
         console.print_package_tree(third_party, "Package Dependencies")
 
+    # Phase 2: process syntax pattern results (already computed above)
     console.print_info("Analyzing code patterns...")
-    with console.spinner("Detecting deprecated syntax..."):
-        pattern_results = detector.detect_from_directory(directory)
 
     all_patterns = []
     for file_patterns in pattern_results.values():

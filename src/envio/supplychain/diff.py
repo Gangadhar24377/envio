@@ -6,6 +6,7 @@ import hashlib
 import tarfile
 import tempfile
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -66,6 +67,7 @@ def _download_and_extract(package: str, version: str, dest: Path) -> Path | None
     Returns the extracted directory path, or None on failure.
     """
     try:
+        dest.mkdir(parents=True, exist_ok=True)
         url = f"https://pypi.org/pypi/{package}/{version}/json"
         response = get_with_retry(url, timeout=15)
         if response.status_code != 200:
@@ -301,7 +303,16 @@ def diff_package(
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
 
-        old_dir = _download_and_extract(package, old_version, tmp_path / "old")
+        # Download old and new versions concurrently — they are fully independent.
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            old_future = executor.submit(
+                _download_and_extract, package, old_version, tmp_path / "old"
+            )
+            new_future = executor.submit(
+                _download_and_extract, package, new_version, tmp_path / "new"
+            )
+
+        old_dir = old_future.result()
         if old_dir is None:
             return PackageDiff(
                 package=package,
@@ -310,7 +321,7 @@ def diff_package(
                 error=f"Failed to download version {old_version}",
             )
 
-        new_dir = _download_and_extract(package, new_version, tmp_path / "new")
+        new_dir = new_future.result()
         if new_dir is None:
             return PackageDiff(
                 package=package,

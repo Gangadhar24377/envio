@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -193,13 +194,29 @@ def _validate_and_normalize_packages(packages: list[str], console) -> list[str]:
     Returns:
         List of normalized, validated packages
     """
-    normalized = []
-    issues = []
+    if not packages:
+        return []
 
     console.print_info("Validating packages against PyPI...")
 
-    for pkg in packages:
-        result, status = _normalize_package(pkg)
+    # Fan out all normalize calls in parallel, preserving order via indexed futures.
+    indexed_results: dict[int, list[str]] = {}
+    max_workers = min(len(packages), 10)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_idx = {
+            executor.submit(_normalize_package, pkg): i
+            for i, pkg in enumerate(packages)
+        }
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            indexed_results[idx] = future.result()
+
+    normalized = []
+    issues = []
+
+    for i, pkg in enumerate(packages):
+        result, status = indexed_results[i]
 
         if status == "not_found":
             issues.append(f"  {pkg} -> not found on PyPI")
@@ -252,11 +269,16 @@ def _supply_chain_preinstall_check(
 
     flagged_packages = []
 
-    for pkg_spec in packages:
-        risk = fast_scan(pkg_spec)
-
-        if risk.risk_score >= 20:
-            flagged_packages.append((pkg_spec, risk))
+    # Fan out all fast_scan calls in parallel.
+    with ThreadPoolExecutor(max_workers=min(len(packages), 10)) as executor:
+        future_to_spec = {
+            executor.submit(fast_scan, pkg_spec): pkg_spec for pkg_spec in packages
+        }
+        for future in as_completed(future_to_spec):
+            pkg_spec = future_to_spec[future]
+            risk = future.result()
+            if risk.risk_score >= 20:
+                flagged_packages.append((pkg_spec, risk))
 
     if not flagged_packages:
         return True

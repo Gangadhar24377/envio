@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from envio.supplychain.cache import SupplyChainCache
@@ -89,12 +90,17 @@ def search_package_security(package_name: str) -> WebSearchResult:
         f"{package_name} supply chain attack",
     ]
 
-    all_evidence = []
+    all_evidence: list[str] = []
 
-    for query in search_queries:
-        results = _search_duckduckgo(query)
-        evidence = _analyze_results(results, package_name)
-        all_evidence.extend(evidence)
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {
+            executor.submit(_search_duckduckgo, query): query
+            for query in search_queries
+        }
+        for future in as_completed(futures):
+            results = future.result()
+            evidence = _analyze_results(results, package_name)
+            all_evidence.extend(evidence)
 
     flagged = len(all_evidence) > 0
 

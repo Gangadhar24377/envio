@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -320,20 +321,29 @@ class SystemProfiler:
         return None
 
     def profile(self) -> SystemProfile:
-        """Get complete system profile."""
+        """Get complete system profile with all detections running concurrently."""
         if self._profile is None:
-            gpu = self.detect_gpu()
+            # All detections are independent — run them in parallel.
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                os_future = executor.submit(self.detect_os)
+                arch_future = executor.submit(self.detect_architecture)
+                py_future = executor.submit(self.detect_python_version)
+                shell_future = executor.submit(self.detect_shell)
+                ram_future = executor.submit(self._detect_ram)
+                gpu_future = executor.submit(self.detect_gpu)
+
+            gpu = gpu_future.result()
             ml_config = self._get_ml_config(gpu)
 
             self._profile = SystemProfile(
-                os_type=self.detect_os(),
+                os_type=os_future.result(),
                 os_release=platform.release(),
-                architecture=self.detect_architecture(),
-                python_version=self.detect_python_version(),
-                shell_type=self.detect_shell(),
+                architecture=arch_future.result(),
+                python_version=py_future.result(),
+                shell_type=shell_future.result(),
                 gpu=gpu,
                 ml_config=ml_config,
-                ram_gb=self._detect_ram(),
+                ram_gb=ram_future.result(),
             )
         return self._profile
 

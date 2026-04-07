@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 
 import click
 
@@ -11,6 +12,74 @@ from envio.cli_helpers import (
     _get_console,
     _load_dotenv,
 )
+
+
+def _get_installed_packages_for_audit(env_path, manager) -> list[str]:
+    """Get installed packages for audit supply chain scan."""
+    try:
+        import json
+        import subprocess
+
+        python_path = manager.get_python_path(env_path)
+        result = subprocess.run(
+            [str(python_path), "-m", "pip", "list", "--format=json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            return [f"{pkg['name']}=={pkg['version']}" for pkg in data]
+    except Exception:
+        pass
+    return []
+
+
+def _display_supply_chain_result(result, console, verbose: bool) -> None:
+    """Display a pre-computed supply chain ScanResult."""
+    from rich.table import Table
+
+    flagged = [p for p in result.packages if p.risk_score >= 15]
+
+    if flagged:
+        console.print_warning(f"Supply chain: {len(flagged)} package(s) flagged")
+        console.print_info("")
+
+        table = Table(title="Supply Chain Risks")
+        table.add_column("Package", style="cyan")
+        table.add_column("Version", style="white")
+        table.add_column("Risk", style="yellow", justify="right")
+        table.add_column("Level", style="yellow")
+        table.add_column("Flags", style="red")
+
+        for pkg in result.packages:
+            if pkg.risk_score < 15:
+                continue
+
+            if pkg.risk_score >= 90:
+                level = "[bold red]CRITICAL[/]"
+            elif pkg.risk_score >= 70:
+                level = "[red]HIGH[/]"
+            elif pkg.risk_score >= 40:
+                level = "[yellow]MEDIUM[/]"
+            else:
+                level = "[dim]LOW[/]"
+
+            flags_text = "; ".join(pkg.flags[:2]) if pkg.flags else ""
+            if len(pkg.flags) > 2:
+                flags_text += f" (+{len(pkg.flags) - 2} more)"
+
+            table.add_row(
+                pkg.package,
+                pkg.version or "latest",
+                str(pkg.risk_score),
+                level,
+                flags_text,
+            )
+
+        console._safe_print(table)
+    else:
+        console.print_success("Supply chain: No risks detected")
 
 
 @click.command()
@@ -94,8 +163,14 @@ def audit(
             return
 
         console.print_info("Scanning for vulnerabilities...")
-        with console.spinner("Running pip-audit..."):
-            result = subprocess.run(
+
+        # Pre-fetch the package list once; both scans need it.
+        sc_packages = (
+            _get_installed_packages_for_audit(env_path, manager) if supply_chain else []
+        )
+
+        def _run_pip_audit():
+            return subprocess.run(
                 [
                     pip_audit_cmd,
                     "--format",
@@ -107,6 +182,29 @@ def audit(
                 timeout=120,
                 cwd=str(env_path),
             )
+
+        def _run_sc_scan():
+            if not sc_packages:
+                return None
+            from envio.supplychain.scanner import scan_packages
+
+            return scan_packages(sc_packages, deep_mode=False)
+
+        if supply_chain:
+            # Run pip-audit and supply-chain scan simultaneously.
+            with console.spinner("Running security checks..."):
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    audit_future = executor.submit(_run_pip_audit)
+                    sc_future = executor.submit(_run_sc_scan)
+                    audit_future.add_done_callback(lambda _: None)
+                    sc_future.add_done_callback(lambda _: None)
+                # Futures complete when executor context exits
+            result = audit_future.result()
+            sc_result = sc_future.result()
+        else:
+            with console.spinner("Running pip-audit..."):
+                result = _run_pip_audit()
+            sc_result = None
 
         if result.returncode == 0:
             console.print_success("No vulnerabilities found!")
@@ -224,10 +322,12 @@ def audit(
             else:
                 console.print_warning("No automatic fixes available")
 
-        if supply_chain:
+        if supply_chain and sc_result is not None:
             console.print_info("")
-            console.print_info("Running supply chain security checks...")
-            _run_supply_chain_scan(env_path, manager, console, verbose)
+            console.print_info("Supply chain security results:")
+            _display_supply_chain_result(sc_result, console, verbose)
+        elif supply_chain and sc_result is None:
+            console.print_warning("No packages found for supply chain scan")
 
     except Exception as e:
         console.print_error(f"Error: {e}")
@@ -236,7 +336,7 @@ def audit(
 
 
 def _run_supply_chain_scan(env_path, manager, console, verbose: bool) -> None:
-    """Run supply chain scan as part of audit."""
+    """Run supply chain scan as part of audit (kept for backwards compatibility)."""
     try:
         from envio.supplychain.scanner import scan_packages
 
@@ -250,73 +350,9 @@ def _run_supply_chain_scan(env_path, manager, console, verbose: bool) -> None:
         with console.spinner("Running supply chain checks..."):
             result = scan_packages(packages, deep_mode=False)
 
-        from rich.table import Table
-
-        flagged = [p for p in result.packages if p.risk_score >= 15]
-
-        if flagged:
-            console.print_warning(f"Supply chain: {len(flagged)} package(s) flagged")
-            console.print_info("")
-
-            table = Table(title="Supply Chain Risks")
-            table.add_column("Package", style="cyan")
-            table.add_column("Version", style="white")
-            table.add_column("Risk", style="yellow", justify="right")
-            table.add_column("Level", style="yellow")
-            table.add_column("Flags", style="red")
-
-            for pkg in result.packages:
-                if pkg.risk_score < 15:
-                    continue
-
-                if pkg.risk_score >= 90:
-                    level = "[bold red]CRITICAL[/]"
-                elif pkg.risk_score >= 70:
-                    level = "[red]HIGH[/]"
-                elif pkg.risk_score >= 40:
-                    level = "[yellow]MEDIUM[/]"
-                else:
-                    level = "[dim]LOW[/]"
-
-                flags_text = "; ".join(pkg.flags[:2]) if pkg.flags else ""
-                if len(pkg.flags) > 2:
-                    flags_text += f" (+{len(pkg.flags) - 2} more)"
-
-                table.add_row(
-                    pkg.package,
-                    pkg.version or "latest",
-                    str(pkg.risk_score),
-                    level,
-                    flags_text,
-                )
-
-            console._safe_print(table)
-        else:
-            console.print_success("Supply chain: No risks detected")
+        _display_supply_chain_result(result, console, verbose)
 
     except Exception as exc:
         console.print_error(f"Supply chain scan failed: {exc}")
         if verbose:
             console._safe_print(traceback.format_exc())
-
-
-def _get_installed_packages_for_audit(env_path, manager) -> list[str]:
-    """Get installed packages for audit supply chain scan."""
-    try:
-        import subprocess
-
-        python_path = manager.get_python_path(env_path)
-        result = subprocess.run(
-            [str(python_path), "-m", "pip", "list", "--format=json"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            import json
-
-            data = json.loads(result.stdout)
-            return [f"{pkg['name']}=={pkg['version']}" for pkg in data]
-    except Exception:
-        pass
-    return []
