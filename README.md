@@ -74,7 +74,11 @@ envio install requests flask
 | `envio activate my-env` | Show activation commands |
 | `envio audit` | Scan for vulnerabilities |
 | `envio supply-chain scan` | Supply chain security scan |
+| `envio supply-chain scan --pin-versions` | Pin packages to security lockfile |
+| `envio supply-chain verify` | Verify lockfile integrity (CI gate) |
 | `envio supply-chain fix` | Auto-fix flagged packages |
+| `envio supply-chain hook install` | Add pre-commit hook |
+| `envio supply-chain hook ci` | Generate CI/CD workflow |
 | `envio lock` | Generate reproducible lockfile |
 | `envio export` | Export to dockerfile/devcontainer |
 | `envio resurrect` | Analyze old repos and revive |
@@ -209,6 +213,9 @@ Python supply chain attacks are at an all-time high in 2026. Malicious packages 
 envio supply-chain scan -n my-env     # Full security intelligence scan
 envio supply-chain scan --deep        # Deep scan with LLM diff analysis
 envio supply-chain scan --all         # Scan all environments
+envio supply-chain scan --pin-versions          # Scan + write security lockfile
+envio supply-chain scan --pin-versions --pin-json  # Also emit JSON metadata
+envio supply-chain verify             # Verify lockfile in CI
 envio supply-chain fix -n my-env      # Auto-fix flagged packages
 envio audit -n my-env --supply-chain  # Combined CVE + supply chain scan
 ```
@@ -221,7 +228,22 @@ envio audit -n my-env --supply-chain  # Combined CVE + supply chain scan
 - **Low-reputation packages** — flags new, unmaintained, or rarely downloaded packages
 - **Version diff analysis** — LLM-powered analysis of code changes between package versions (detects backdoors, data exfiltration, obfuscation)
 
+**Lockfile pinning:** `envio supply-chain scan --pin-versions` writes `envio-security.lock` — a plain-text file that pins every package to its exact installed version and annotates flagged packages inline. Commit it to version control and enforce it in CI with `envio supply-chain verify` (exits non-zero on any mismatch).
+
 **Auto-remediation:** `envio supply-chain fix` can automatically replace typosquatted packages with the real ones and update your project files.
+
+**Workflow integration:** Protect every commit and CI run automatically.
+
+```bash
+# Add a pre-commit hook (scans before every git commit)
+envio supply-chain hook install
+
+# Generate a GitHub Actions workflow (weekly scan + PR checks)
+envio supply-chain hook ci --platform github
+
+# Generate a GitLab CI snippet
+envio supply-chain hook ci --platform gitlab
+```
 
 No API keys needed. Protection works out of the box.
 

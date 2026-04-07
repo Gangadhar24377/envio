@@ -1,4 +1,4 @@
-"""OSV.dev vulnerability check."""
+"""OSV.dev vulnerability check with batch query support."""
 
 from __future__ import annotations
 
@@ -68,3 +68,81 @@ def check_osv(package_name: str, version: str | None = None) -> OSVResult:
     )
 
     return result
+
+
+def check_osv_batch(
+    packages: list[tuple[str, str | None]],
+) -> dict[str, OSVResult]:
+    """Check multiple packages for vulnerabilities in a single batch request.
+
+    OSV.dev supports batch queries which is much faster than individual calls.
+
+    Args:
+        packages: List of (package_name, version) tuples
+
+    Returns:
+        Dict mapping "name:version" keys to OSVResult
+    """
+    cache = SupplyChainCache.get_instance()
+    results: dict[str, OSVResult] = {}
+    uncached: list[tuple[str, str, str | None]] = []
+
+    for pkg_name, pkg_version in packages:
+        cache_key = f"{pkg_name}:{pkg_version}" if pkg_version else pkg_name
+        cached = cache.get(cache_key, "osv")
+        if cached is not None:
+            results[cache_key] = OSVResult(**cached)
+        else:
+            uncached.append((cache_key, pkg_name, pkg_version))
+
+    if not uncached:
+        return results
+
+    batch_query = {
+        "queries": [
+            {
+                "package": {"name": pkg_name, "ecosystem": "PyPI"},
+                **({"version": pkg_version} if pkg_version else {}),
+            }
+            for _, pkg_name, pkg_version in uncached
+        ]
+    }
+
+    try:
+        response = get_with_retry(
+            "https://api.osv.dev/v1/querybatch",
+            timeout=30,
+            json=batch_query,
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            vuln_results = data.get("results", [])
+
+            for i, (_, pkg_name, pkg_version) in enumerate(uncached):
+                cache_key = f"{pkg_name}:{pkg_version}" if pkg_version else pkg_name
+                vulns = []
+                if i < len(vuln_results):
+                    vulns = vuln_results[i].get("vulns", [])
+
+                result = OSVResult(
+                    has_vulns=len(vulns) > 0,
+                    vuln_count=len(vulns),
+                    vulns=vulns,
+                )
+
+                results[cache_key] = result
+                cache.set(
+                    cache_key,
+                    "osv",
+                    {
+                        "has_vulns": result.has_vulns,
+                        "vuln_count": result.vuln_count,
+                        "vulns": result.vulns,
+                    },
+                )
+    except Exception:
+        for cache_key, _pkg_name, _pkg_version in uncached:
+            results[cache_key] = OSVResult(has_vulns=False, vuln_count=0, vulns=[])
+
+    return results

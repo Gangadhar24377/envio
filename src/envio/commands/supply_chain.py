@@ -23,12 +23,31 @@ def supply_chain() -> None:
 @click.option(
     "--all", "scan_all", is_flag=True, help="Scan all registered environments"
 )
+@click.option(
+    "--pin-versions",
+    "pin_versions",
+    is_flag=True,
+    help="Write a security lockfile (envio-security.lock) after scanning",
+)
+@click.option(
+    "--pin-json",
+    is_flag=True,
+    help="Also emit envio-security.lock.json with full scan metadata (requires --pin-versions)",
+)
+@click.option(
+    "--output-dir",
+    default=None,
+    help="Directory for the lockfile (default: current directory)",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def scan(
     name: str | None,
     path: str | None,
     deep: bool,
     scan_all: bool,
+    pin_versions: bool,
+    pin_json: bool,
+    output_dir: str | None,
     verbose: bool,
 ) -> None:
     """Scan environment for supply chain risks.
@@ -41,6 +60,9 @@ def scan(
         envio supply-chain scan -n my-env
         envio supply-chain scan --deep
         envio supply-chain scan --all
+        envio supply-chain scan --pin-versions
+        envio supply-chain scan --pin-versions --pin-json
+        envio supply-chain scan --pin-versions --output-dir ./security
     """
     _load_dotenv()
     console = _get_console(verbose)
@@ -77,6 +99,33 @@ def scan(
             result = scan_packages(packages, deep_mode=deep)
 
         _display_results(console, result, verbose)
+
+        if pin_versions:
+            from envio.supplychain.pinning import pin_versions as do_pin
+
+            pin_result = do_pin(
+                result,
+                env_path=env_path,
+                output_dir=output_dir,
+                json_output=pin_json,
+            )
+            console.print_success(
+                f"Security lockfile written: {pin_result.lockfile_path}"
+            )
+            if pin_result.json_path:
+                console.print_success(
+                    f"JSON metadata written:     {pin_result.json_path}"
+                )
+            console.print_info(
+                f"Pinned {pin_result.total_packages} packages "
+                f"({pin_result.flagged_packages} flagged, "
+                f"{pin_result.safe_packages} safe)"
+            )
+            if pin_result.flagged_packages:
+                console.print_warning(
+                    "Flagged packages are annotated in the lockfile. "
+                    "Review before deploying."
+                )
 
     except Exception as exc:
         console.print_error(f"Error: {exc}")
@@ -547,3 +596,150 @@ def _update_requirements_txt(fixes: list[dict], filepath: Path, console) -> None
 supply_chain.add_command(scan)
 supply_chain.add_command(cache_clear)
 supply_chain.add_command(fix_command)
+
+
+@supply_chain.command("hook")
+@click.argument("action", type=click.Choice(["install", "remove", "ci"]))
+@click.option(
+    "--platform",
+    type=click.Choice(["github", "gitlab"]),
+    default="github",
+    help="CI platform (only used with 'ci' action)",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def hook_command(action: str, platform: str, verbose: bool) -> None:
+    """Manage pre-commit hooks and CI/CD templates.
+
+    \b
+    Actions:
+      install  Add supply chain check to pre-commit hooks
+      remove   Remove supply chain check from pre-commit hooks
+      ci       Generate CI/CD pipeline template
+
+    \b
+    Examples:
+        envio supply-chain hook install
+        envio supply-chain hook remove
+        envio supply-chain hook ci --platform github
+        envio supply-chain hook ci --platform gitlab
+    """
+    console = _get_console(verbose)
+
+    if action == "install":
+        from envio.supplychain.hooks import install_pre_commit_hook
+
+        install_pre_commit_hook(console)
+    elif action == "remove":
+        from envio.supplychain.hooks import remove_pre_commit_hook
+
+        remove_pre_commit_hook(console)
+    elif action == "ci":
+        from envio.supplychain.hooks import generate_ci_template
+
+        generate_ci_template(platform, console)
+
+
+supply_chain.add_command(hook_command)
+
+
+@supply_chain.command("verify")
+@click.option(
+    "--lockfile",
+    default="envio-security.lock",
+    show_default=True,
+    help="Path to the security lockfile to verify against",
+)
+@click.option("--name", "-n", default=None, help="Environment name")
+@click.option("--path", "-p", default=None, help="Environment path")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def verify_command(
+    lockfile: str,
+    name: str | None,
+    path: str | None,
+    verbose: bool,
+) -> None:
+    """Verify installed packages match the security lockfile.
+
+    Compares every package currently installed in the environment against the
+    pinned versions in ``envio-security.lock`` (or a custom lockfile).
+    Exits with a non-zero status code if any mismatch or missing package is
+    found, making it suitable for CI gates.
+
+    \b
+    Examples:
+        envio supply-chain verify
+        envio supply-chain verify --lockfile ./security/envio-security.lock
+        envio supply-chain verify -n my-env
+    """
+    _load_dotenv()
+    console = _get_console(verbose)
+    console.print_header("Envio Supply Chain Verify", "Lockfile integrity check")
+
+    try:
+        from envio.core.virtualenv_manager import VirtualEnvManager
+        from envio.supplychain.pinning import verify_lockfile
+
+        env_path = _find_environment(name, path, console)
+        if not env_path:
+            return
+
+        manager = VirtualEnvManager()
+        if not manager.exists(env_path):
+            console.print_error(f"Virtual environment not found at: {env_path}")
+            return
+
+        lockfile_path = Path(lockfile)
+        if not lockfile_path.exists():
+            console.print_error(f"Lockfile not found: {lockfile_path}")
+            console.print_info(
+                "Run `envio supply-chain scan --pin-versions` to generate one."
+            )
+            raise SystemExit(1)
+
+        console.print_info(f"Verifying against: {lockfile_path}")
+
+        packages = _get_installed_packages(env_path, manager)
+        if not packages:
+            console.print_warning("No packages found in environment")
+            return
+
+        matched, mismatched, missing = verify_lockfile(lockfile_path, packages)
+
+        if verbose:
+            for m in matched:
+                console.print_info(f"  ok  {m}")
+
+        if mismatched:
+            console.print_warning(f"{len(mismatched)} version mismatch(es):")
+            for m in mismatched:
+                console.print_warning(f"  MISMATCH  {m}")
+
+        if missing:
+            console.print_warning(
+                f"{len(missing)} package(s) missing from environment:"
+            )
+            for m in missing:
+                console.print_warning(f"  MISSING   {m}")
+
+        if not mismatched and not missing:
+            console.print_success(
+                f"All {len(matched)} pinned packages match the lockfile."
+            )
+        else:
+            console.print_error(
+                "Lockfile verification FAILED. "
+                "Re-run `envio supply-chain scan --pin-versions` to update the lockfile, "
+                "or investigate the mismatched packages."
+            )
+            raise SystemExit(1)
+
+    except SystemExit:
+        raise
+    except Exception as exc:
+        console.print_error(f"Error: {exc}")
+        if verbose:
+            console._safe_print(traceback.format_exc())
+        raise SystemExit(1) from exc
+
+
+supply_chain.add_command(verify_command)
