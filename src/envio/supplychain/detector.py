@@ -60,7 +60,7 @@ def _load_top_packages(top_n: int = 10000) -> tuple[list[str], set[str]]:
 def _get_top_packages() -> tuple[list[str], set[str]]:
     cache = SupplyChainCache.get_instance()
     cached = cache.get("top_packages", "detector")
-    if cached is not None:
+    if cached is not None and isinstance(cached, dict) and "list" in cached:
         return cached["list"], set(cached["set"])
     pkg_list, pkg_set = _load_top_packages()
     if pkg_list:

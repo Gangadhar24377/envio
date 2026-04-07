@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,11 @@ class SupplyChainCache:
     - osv: 1 hour
     - reputation: 1 hour
     - detector: 24 hours
+
+    Thread-safety: a single persistent connection is opened with
+    ``check_same_thread=False`` and all operations are protected by a
+    ``threading.Lock`` so the cache can be shared safely across the
+    ``ThreadPoolExecutor`` workers used by ``scan_packages()``.
     """
 
     _instance: SupplyChainCache | None = None
@@ -35,6 +41,7 @@ class SupplyChainCache:
         self._db_path = db_path
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
+        self._lock = threading.Lock()
         self._init_db()
 
     @classmethod
@@ -45,25 +52,29 @@ class SupplyChainCache:
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
+            self._conn = sqlite3.connect(
+                self._db_path,
+                check_same_thread=False,
+            )
         return self._conn
 
     def _init_db(self) -> None:
-        conn = self._get_conn()
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS scan_cache (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                category TEXT NOT NULL,
-                created_at REAL NOT NULL
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS scan_cache (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                )
+                """
             )
-            """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_cache_category ON scan_cache(category)"
-        )
-        conn.commit()
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cache_category ON scan_cache(category)"
+            )
+            conn.commit()
 
     def _get_ttl(self, category: str) -> int:
         ttls = {
@@ -79,11 +90,12 @@ class SupplyChainCache:
         ttl = self._get_ttl(category)
         now = time.time()
 
-        conn = self._get_conn()
-        row = conn.execute(
-            "SELECT value, created_at FROM scan_cache WHERE key = ?",
-            (cache_key,),
-        ).fetchone()
+        with self._lock:
+            conn = self._get_conn()
+            row = conn.execute(
+                "SELECT value, created_at FROM scan_cache WHERE key = ?",
+                (cache_key,),
+            ).fetchone()
 
         if row is None:
             return None
@@ -103,30 +115,34 @@ class SupplyChainCache:
         now = time.time()
         serialized = json.dumps(value)
 
-        conn = self._get_conn()
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO scan_cache (key, value, category, created_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (cache_key, serialized, category, now),
-        )
-        conn.commit()
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO scan_cache (key, value, category, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (cache_key, serialized, category, now),
+            )
+            conn.commit()
 
     def delete(self, key: str) -> None:
-        conn = self._get_conn()
-        conn.execute("DELETE FROM scan_cache WHERE key = ?", (key,))
-        conn.commit()
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute("DELETE FROM scan_cache WHERE key = ?", (key,))
+            conn.commit()
 
     def clear(self, category: str | None = None) -> None:
-        conn = self._get_conn()
-        if category:
-            conn.execute("DELETE FROM scan_cache WHERE category = ?", (category,))
-        else:
-            conn.execute("DELETE FROM scan_cache")
-        conn.commit()
+        with self._lock:
+            conn = self._get_conn()
+            if category:
+                conn.execute("DELETE FROM scan_cache WHERE category = ?", (category,))
+            else:
+                conn.execute("DELETE FROM scan_cache")
+            conn.commit()
 
     def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
