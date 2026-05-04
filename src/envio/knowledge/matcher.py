@@ -13,17 +13,82 @@ from typing import Any
 from envio.knowledge.recipes import PACKAGE_RECIPES
 
 # Stopwords to ignore during matching
-_STOPWORDS = frozenset({
-    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to",
-    "for", "of", "with", "by", "from", "is", "are", "was", "were",
-    "be", "been", "being", "have", "has", "had", "do", "does", "did",
-    "will", "would", "could", "should", "may", "might", "shall",
-    "can", "need", "want", "like", "using", "use", "set", "up",
-    "setup", "create", "make", "build", "develop", "start", "new",
-    "project", "environment", "env", "python", "pip", "install",
-    "i", "me", "my", "we", "our", "you", "your", "it", "its",
-    "that", "this", "some", "any", "all", "get", "put",
-})
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "shall",
+        "can",
+        "need",
+        "want",
+        "like",
+        "using",
+        "use",
+        "set",
+        "up",
+        "setup",
+        "create",
+        "make",
+        "build",
+        "develop",
+        "start",
+        "new",
+        "project",
+        "environment",
+        "env",
+        "python",
+        "pip",
+        "install",
+        "i",
+        "me",
+        "my",
+        "we",
+        "our",
+        "you",
+        "your",
+        "it",
+        "its",
+        "that",
+        "this",
+        "some",
+        "any",
+        "all",
+        "get",
+        "put",
+    }
+)
 
 
 def _tokenize(text: str) -> set[str]:
@@ -94,11 +159,13 @@ class RecipeMatcher:
                 score = min(1.0, score * 1.5)
 
             if score >= min_score:
-                results.append(MatchResult(
-                    recipe_key=key,
-                    score=score,
-                    packages=self._recipes[key],
-                ))
+                results.append(
+                    MatchResult(
+                        recipe_key=key,
+                        score=score,
+                        packages=self._recipes[key],
+                    )
+                )
 
         # Sort by score descending
         results.sort(key=lambda r: r.score, reverse=True)

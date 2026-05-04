@@ -254,9 +254,7 @@ class LLMClient:
 
         # API-key-based providers need a key
         if not self.config.api_key and self.config.provider != "ollama":
-            raise ValueError(
-                "No API key configured. Run: envio config api <your-key>"
-            )
+            raise ValueError("No API key configured. Run: envio config api <your-key>")
 
         kwargs: dict[str, Any] = {
             "model": self.config.model,

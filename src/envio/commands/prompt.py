@@ -73,13 +73,9 @@ def prompt(
         console.print_info(f"Using {provider} (key from OS keyring)")
     elif is_cloud_relay_enabled():
         console.print_info("Using Envio Cloud (free, 30 requests/day)")
-        console.print_info(
-            "For unlimited AI: envio config api <your-key>"
-        )
+        console.print_info("For unlimited AI: envio config api <your-key>")
     else:
-        console.print_warning(
-            "No AI configured. Using built-in knowledge base."
-        )
+        console.print_warning("No AI configured. Using built-in knowledge base.")
         console.print_info(
             "Enable free AI: envio config cloud on | Or: envio config api <key>"
         )
