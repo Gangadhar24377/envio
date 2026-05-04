@@ -20,3 +20,13 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [types-all]
+
+  - repo: local
+    hooks:
+      - id: envio-supply-chain
+        name: envio supply chain scan
+        entry: envio supply-chain scan
+        language: system
+        pass_filenames: false
+        always_run: true
+        description: Scan environment for supply chain risks before committing

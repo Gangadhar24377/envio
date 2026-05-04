@@ -21,6 +21,7 @@ AVAILABLE_PROVIDERS = [
     "cohere",
     "replicate",
     "ollama",
+    "envio_cloud",
 ]
 
 # Default models per provider
@@ -31,7 +32,11 @@ DEFAULT_MODELS = {
     "cohere": "command",
     "replicate": "replicate-7b",
     "ollama": "llama3",
+    "envio_cloud": "llama-3.3-70b-versatile",
 }
+
+# Keyring service name
+_KEYRING_SERVICE = "envio"
 
 
 def get_config_dir() -> Path:
@@ -114,6 +119,9 @@ def detect_provider_from_key(api_key: str) -> str | None:
 def set_api_key(api_key: str, provider: str | None = None) -> str:
     """Set API key with auto-detection.
 
+    Stores the key in the OS keyring when available, with a
+    fallback to the JSON config file.
+
     Args:
         api_key: The API key
         provider: Explicit provider (optional, auto-detected if not provided)
@@ -138,8 +146,20 @@ def set_api_key(api_key: str, provider: str | None = None) -> str:
         # Unknown key format - need user input
         return ""  # Signal to caller to ask user
 
-    config["api_key"] = api_key
+    # Try to store in keyring (secure), fall back to config (plain text)
+    stored_in_keyring = False
+    try:
+        import keyring
+
+        keyring.set_password(_KEYRING_SERVICE, "api_key", api_key)
+        stored_in_keyring = True
+        # Don't store the actual key in JSON if keyring works
+        config["api_key"] = "__keyring__"
+    except Exception:
+        config["api_key"] = api_key
+
     config["provider"] = provider
+    config["api_key_in_keyring"] = stored_in_keyring
     save_config(config)
     return provider
 
@@ -175,7 +195,18 @@ def set_model(model: str) -> None:
 
 
 def get_api_key() -> str | None:
-    """Get API key from config file."""
+    """Get API key from keyring or config file."""
+    # Try keyring first
+    try:
+        import keyring
+
+        key = keyring.get_password(_KEYRING_SERVICE, "api_key")
+        if key:
+            return key
+    except Exception:
+        pass
+
+    # Fall back to config file
     config = load_config()
     return config.get("api_key") or None
 
@@ -637,3 +668,30 @@ def ensure_config(prompt_first_run: bool = True) -> dict[str, Any]:
         print("=" * 50 + "\n")
 
     return config
+
+
+# ---------------------------------------------------------------------------
+# Cloud relay helpers
+# ---------------------------------------------------------------------------
+
+
+def is_cloud_relay_enabled() -> bool:
+    """Check if Envio Cloud relay is enabled (default: True)."""
+    config = load_config()
+    return config.get("envio_cloud", True)
+
+
+def set_cloud_relay(enabled: bool) -> None:
+    """Enable or disable the Envio Cloud relay."""
+    config = load_config()
+    config["envio_cloud"] = enabled
+    save_config(config)
+
+
+def get_cloud_relay_url() -> str:
+    """Get the cloud relay proxy URL."""
+    config = load_config()
+    return config.get(
+        "cloud_relay_url",
+        "https://envio-proxy.gangadharkambhamettu.workers.dev",
+    )

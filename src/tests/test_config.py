@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -36,7 +37,7 @@ class TestDetectProviderFromKey:
 
     def test_none_key_returns_ollama(self):
         """None key should return 'ollama'."""
-        assert config.detect_provider_from_key(None) == "ollama"
+        assert config.detect_provider_from_key(cast(str, None)) == "ollama"
 
     def test_unknown_key_returns_none(self):
         """Unknown key format should return None."""
@@ -105,7 +106,7 @@ class TestSetApiKey:
         assert result == "openai"
 
         cfg = config.load_config()
-        assert cfg["api_key"] == "sk-test-key-12345"
+        assert cfg["api_key"] in {"__keyring__", "sk-test-key-12345"}
         assert cfg["provider"] == "openai"
 
     def test_set_key_with_explicit_provider(self, temp_config_dir):
@@ -164,7 +165,8 @@ class TestGetApiKey:
 
     def test_get_from_env(self, temp_config_dir):
         """Getting API key when not in config should return None."""
-        key = config.get_api_key()
+        with patch("keyring.get_password", return_value=None):
+            key = config.get_api_key()
         assert key is None
 
 

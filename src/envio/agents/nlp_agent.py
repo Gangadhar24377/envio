@@ -157,6 +157,8 @@ Respond with JSON:
     ) -> dict[str, Any]:
         """Extract package information from user input.
 
+        Tries LLM first, falls back to local recipe matcher if unavailable.
+
         Args:
             user_input: Natural language request (e.g., "set up pytorch env with cuda")
             hardware_context: Hardware information string (optional)
@@ -165,38 +167,69 @@ Respond with JSON:
         Returns:
             Dictionary with packages, environment_type, project_type, preferences
         """
-        prompt = NLP_USER_PROMPT.format(
-            user_input=user_input,
-            hardware_context=hardware_context,
-        )
-
-        if callback:
-            callback("[NLP] Understanding your request...")
-
-        response = self._llm.chat_json(
-            system_prompt=NLP_SYSTEM_PROMPT,
-            user_prompt=prompt,
-        )
-
-        if callback:
-            if response.get("project_type"):
-                callback(f"  -> Detected: {response['project_type']} project")
-            if response.get("preferences", {}).get("cpu_only"):
-                callback("  -> Detected: CPU-only preference")
-            elif response.get("preferences", {}).get("gpu_optimized"):
-                callback("  -> Detected: GPU-optimized mode")
-            if response.get("reasoning"):
-                callback(f"  -> {response['reasoning']}")
-
-        # Enhance packages with web search if they seem generic
-        packages = response.get("packages", [])
-        if packages:
-            enhanced_packages = self._enhance_with_search(
-                user_input, packages, callback
+        # Try LLM-based extraction first
+        try:
+            prompt = NLP_USER_PROMPT.format(
+                user_input=user_input,
+                hardware_context=hardware_context,
             )
-            response["packages"] = enhanced_packages
 
-        return response
+            if callback:
+                callback("[NLP] Understanding your request...")
+
+            response = self._llm.chat_json(
+                system_prompt=NLP_SYSTEM_PROMPT,
+                user_prompt=prompt,
+            )
+
+            if callback:
+                if response.get("project_type"):
+                    callback(f"  -> Detected: {response['project_type']} project")
+                if response.get("preferences", {}).get("cpu_only"):
+                    callback("  -> Detected: CPU-only preference")
+                elif response.get("preferences", {}).get("gpu_optimized"):
+                    callback("  -> Detected: GPU-optimized mode")
+                if response.get("reasoning"):
+                    callback(f"  -> {response['reasoning']}")
+
+            # Enhance packages with web search if they seem generic
+            packages = response.get("packages", [])
+            if packages:
+                enhanced_packages = self._enhance_with_search(
+                    user_input, packages, callback
+                )
+                response["packages"] = enhanced_packages
+
+            return response
+
+        except Exception:
+            # Fall back to local recipe matcher
+            return self._fallback_local(user_input, callback)
+
+    def _fallback_local(
+        self,
+        user_input: str,
+        callback: Any = None,
+    ) -> dict[str, Any]:
+        """Fall back to local recipe matching when LLM is unavailable."""
+        from envio.knowledge.matcher import RecipeMatcher
+
+        if callback:
+            callback("[LOCAL] Using built-in knowledge base (no AI available)")
+
+        matcher = RecipeMatcher()
+        result = matcher.resolve(user_input)
+
+        if callback:
+            if result.get("packages"):
+                callback(
+                    f"  -> Matched: {result.get('project_type', 'unknown')} project"
+                )
+                callback(f"  -> {result.get('reasoning', '')}")
+            else:
+                callback("  -> No matching recipe found")
+
+        return result
 
     def extract_packages(self, user_input: str) -> list[str]:
         """Extract just package names from user input."""

@@ -63,12 +63,22 @@ def prompt(
     console.print_header("Envio Prompt", "Natural language environment setup")
 
     # Check for API key from config
-    from envio.config import get_api_key
+    from envio.config import get_api_key, get_provider, is_cloud_relay_enabled
 
     api_key = get_api_key()
-    if not api_key:
-        console.print_warning("No API key found. Falling back to PyPI-only resolution.")
-        console.print_info("Run: envio config api <your-key> to enable AI features.")
+    provider = get_provider()
+    if api_key and api_key != "__keyring__":
+        console.print_info(f"Using {provider} (your API key)")
+    elif api_key == "__keyring__":
+        console.print_info(f"Using {provider} (key from OS keyring)")
+    elif is_cloud_relay_enabled():
+        console.print_info("Using Envio Cloud (free, 30 requests/day)")
+        console.print_info("For unlimited AI: envio config api <your-key>")
+    else:
+        console.print_warning("No AI configured. Using built-in knowledge base.")
+        console.print_info(
+            "Enable free AI: envio config cloud on | Or: envio config api <key>"
+        )
 
     profiler = _get_profiler()
     profile = profiler.profile()
