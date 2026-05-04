@@ -35,6 +35,7 @@ class TestPromptCommand:
             patch("envio.commands.prompt._load_dotenv"),
             patch("envio.commands.prompt._get_console") as mock_console,
             patch("envio.config.get_api_key") as mock_api_key,
+            patch("envio.config.is_cloud_relay_enabled", return_value=False),
             patch("envio.commands.prompt._get_profiler") as mock_profiler,
             patch("envio.commands.prompt._get_nlp_processor") as mock_nlp,
             patch(
@@ -64,7 +65,7 @@ class TestPromptCommand:
             )
         assert result.exit_code == 0
         console.print_warning.assert_any_call(
-            "No API key found. Falling back to PyPI-only resolution."
+            "No AI configured. Using built-in knowledge base."
         )
 
     def test_prompt_resolves_packages(self):

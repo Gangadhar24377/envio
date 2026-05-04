@@ -224,10 +224,12 @@ class TestLLMConfigFromEnv:
     @patch("envio.config.get_model", return_value="")
     @patch("envio.config.get_provider", return_value="openai")
     @patch("envio.config.get_api_key", return_value=None)
+    @patch("envio.config.is_cloud_relay_enabled", return_value=False)
     @patch("envio.config.load_config", return_value={})
     def test_from_env_raises_when_no_provider(
         self,
         mock_load_config,
+        mock_is_cloud,
         mock_get_api_key,
         mock_get_provider,
         mock_get_model,
