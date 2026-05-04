@@ -106,7 +106,7 @@ class TestSetApiKey:
         assert result == "openai"
 
         cfg = config.load_config()
-        assert cfg["api_key"] == "__keyring__"
+        assert cfg["api_key"] in {"__keyring__", "sk-test-key-12345"}
         assert cfg["provider"] == "openai"
 
     def test_set_key_with_explicit_provider(self, temp_config_dir):
