@@ -94,3 +94,8 @@ secrets.json
 
 # mypy
 .mypy_cache/
+
+# Cloudflare Workers / Proxy
+proxy/node_modules/
+proxy/.wrangler/
+proxy/.dev.vars

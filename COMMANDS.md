@@ -21,10 +21,13 @@ pip install -e .
 envio --version
 ```
 
-### Configure API Key
+### Configure API Key (Optional)
+
+> **Note:** Envio works out of the box with **zero configuration** via Envio Cloud (free, 30 requests/day).
+> API key setup is only needed for unlimited AI access.
 
 ```bash
-# Set OpenAI API key (auto-detects provider)
+# Set OpenAI API key (auto-detects provider, stored securely in OS keyring)
 envio config api sk-your-openai-key
 
 # Set Anthropic API key
@@ -45,6 +48,27 @@ envio config set default_envs_dir ~/my-envs
 # Set preferred package manager
 envio config set preferred_package_manager uv
 ```
+
+### Envio Cloud (Free AI)
+
+```bash
+# Envio Cloud is enabled by default — no setup needed!
+
+# Disable cloud relay (use local knowledge base only)
+envio config cloud off
+
+# Re-enable cloud relay
+envio config cloud on
+
+# Point to a custom/self-hosted proxy
+envio config set cloud_relay_url https://your-proxy.workers.dev
+```
+
+**AI Provider Priority:**
+1. Your own API key (if configured)
+2. Local Ollama (if running with models)
+3. Envio Cloud (free, 30 requests/day)
+4. Built-in knowledge base (offline, always works)
 
 ---
 
@@ -81,10 +105,11 @@ envio prompt "simple script" -y
 ```
 
 **How it works:**
-1. Analyzes your request using NLP
-2. Detects your hardware (GPU, VRAM, CUDA)
-3. Resolves dependencies with AI
-4. Creates environment with self-healing if needed
+1. Analyzes your request using AI (Envio Cloud, your API key, or Ollama)
+2. Falls back to built-in knowledge base (~500 recipes) if no AI available
+3. Detects your hardware (GPU, VRAM, CUDA)
+4. Resolves dependencies with AI or fast resolver
+5. Creates environment with self-healing if needed
 
 ---
 
@@ -683,7 +708,7 @@ Manage Envio configuration.
 # Show current configuration
 envio config show
 
-# Set API key (auto-detects provider: openai, anthropic, together, etc.)
+# Set API key (auto-detects provider, securely stored in OS keyring)
 envio config api sk-your-key
 
 # Set specific model
@@ -699,6 +724,13 @@ envio config set default_envs_dir ~/my-envs
 
 # Set preferred package manager
 envio config set preferred_package_manager uv
+
+# Enable/disable Envio Cloud (free AI, default: on)
+envio config cloud on
+envio config cloud off
+
+# Set custom cloud relay URL (for self-hosted proxy)
+envio config set cloud_relay_url https://your-proxy.workers.dev
 
 # Clear API key
 envio config unset api

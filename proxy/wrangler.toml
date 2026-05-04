@@ -1,0 +1,7 @@
+name = "envio-proxy"
+main = "worker.js"
+compatibility_date = "2024-12-01"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "5646a8d72eb94bbcb9fc772b6c0dea2a"

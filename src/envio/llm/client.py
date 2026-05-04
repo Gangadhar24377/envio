@@ -78,29 +78,21 @@ class LLMConfig:
             ollama_available, available_models = _check_ollama(
                 str(ollama_host) if ollama_host else DEFAULT_OLLAMA_HOST
             )
-            if not ollama_available:
-                raise ValueError(
-                    "Ollama is not running. Please start Ollama or use a different provider:\n"
-                    "  envio config api <your-key>"
+
+            if ollama_available and available_models:
+                # Validate model exists
+                if model and model not in available_models:
+                    model = available_models[0]
+
+                return cls(
+                    provider="ollama",
+                    model=model,
+                    api_base=ollama_host,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
                 )
 
-            # Validate model exists
-            if model and model not in available_models:
-                if available_models:
-                    model = available_models[0]
-                else:
-                    raise ValueError(
-                        "Ollama is running but no models found.\n"
-                        "Please pull a model: ollama pull <model_name>"
-                    )
-
-            return cls(
-                provider="ollama",
-                model=model,
-                api_base=ollama_host,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            # Ollama not usable — fall through to cloud relay / other providers
 
         # Handle API-based providers
         if not api_key:
@@ -137,9 +129,21 @@ class LLMConfig:
                     max_tokens=max_tokens,
                 )
 
+            # Fall back to Envio Cloud relay (free, rate-limited)
+            from envio.config import is_cloud_relay_enabled
+
+            if is_cloud_relay_enabled():
+                return cls(
+                    provider="envio_cloud",
+                    model="llama-3.3-70b-versatile",
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+
             raise ValueError(
                 "No LLM provider configured. Please set one:\n"
                 "  envio config api <your-api-key>  # For OpenAI, Anthropic, etc.\n"
+                "  envio config cloud on            # Enable free Envio Cloud\n"
                 "  Or ensure Ollama is running with a model pulled"
             )
 
@@ -236,26 +240,29 @@ class LLMClient:
         Returns:
             LLMResponse with the model's reply
         """
-        # Check for API key
-        if not self.config.api_key:
-            raise ValueError(
-                "No API key configured. Please set ENVIO_LLM_API_KEY or OPENAI_API_KEY"
-            )
-
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_prompt})
 
+        temp = temperature if temperature is not None else self.config.temperature
+        tokens = max_tokens if max_tokens is not None else self.config.max_tokens
+
+        # Route through cloud relay for envio_cloud provider
+        if self.config.provider == "envio_cloud":
+            return self._chat_via_cloud(messages, temp, tokens)
+
+        # API-key-based providers need a key
+        if not self.config.api_key and self.config.provider != "ollama":
+            raise ValueError(
+                "No API key configured. Run: envio config api <your-key>"
+            )
+
         kwargs: dict[str, Any] = {
             "model": self.config.model,
             "messages": messages,
-            "temperature": temperature
-            if temperature is not None
-            else self.config.temperature,
-            "max_tokens": max_tokens
-            if max_tokens is not None
-            else self.config.max_tokens,
+            "temperature": temp,
+            "max_tokens": tokens,
             "timeout": self.config.timeout,
         }
 
@@ -277,6 +284,28 @@ class LLMClient:
                 else 0,
                 "total_tokens": response.usage.total_tokens if response.usage else 0,
             },
+        )
+
+    def _chat_via_cloud(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ) -> LLMResponse:
+        """Send request through the Envio Cloud relay."""
+        from envio.cloud.relay import CloudRelay
+        from envio.config import get_cloud_relay_url
+
+        relay = CloudRelay(proxy_url=get_cloud_relay_url())
+        result = relay.chat(messages, temperature, max_tokens)
+
+        if result.error:
+            raise ValueError(f"Cloud relay: {result.error}")
+
+        return LLMResponse(
+            content=result.content,
+            model=result.model,
+            usage=result.usage,
         )
 
     def chat_json(
